@@ -6,21 +6,45 @@ Usage:
     python scripts/create_admin.py --email admin@example.com --password secure123
     python scripts/create_admin.py --reset            # Reset admin password
     python scripts/create_admin.py --list             # List all admins
+
+Requirements:
+    - Must run from project root directory
+    - Dependencies must be installed: pip install -r requirements.txt
+    - Database must be initialized: alembic upgrade head
 """
 
 import sys
+import os
 import argparse
 from getpass import getpass
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
+from pathlib import Path
 
+# Add project root to path
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+# Check if we're in the right directory
+if not (PROJECT_ROOT / 'app').exists():
+    print("\n❌ Error: Could not find 'app' directory!")
+    print(f"ℹ️  Make sure you run this script from the project root directory.")
+    print(f"ℹ️  Current directory: {os.getcwd()}")
+    print(f"ℹ️  Expected app directory at: {PROJECT_ROOT / 'app'}")
+    sys.exit(1)
+
+# Check dependencies
 try:
+    from sqlalchemy.orm import Session
+    from sqlalchemy.exc import SQLAlchemyError
     from app.database import SessionLocal, engine, Base
     from app.models.user import User
     from app.utils.security import hash_password, verify_password
 except ImportError as e:
-    print(f"Error: Could not import required modules: {e}")
-    print("Make sure you are in the project root directory and have installed dependencies.")
+    print(f"\n❌ Error: Missing required module: {str(e)}")
+    print("\n📝 Please install dependencies:")
+    print("   pip install -r requirements.txt")
+    print("\nℹ️  If using Docker:")
+    print("   docker-compose exec api pip install -r requirements.txt")
+    print("   docker-compose exec api python scripts/create_admin.py")
     sys.exit(1)
 
 
@@ -29,13 +53,27 @@ class AdminManager:
 
     def __init__(self):
         """Initialize database session"""
-        Base.metadata.create_all(bind=engine)
-        self.db: Session = SessionLocal()
+        try:
+            Base.metadata.create_all(bind=engine)
+            self.db: Session = SessionLocal()
+        except Exception as e:
+            print(f"\n❌ Error connecting to database: {str(e)}")
+            print("\n📝 Troubleshooting:")
+            print("   1. Check DATABASE_URL in .env file")
+            print("   2. Ensure PostgreSQL is running")
+            print("   3. Run migrations: alembic upgrade head")
+            print("\nℹ️  If using Docker:")
+            print("   docker-compose ps postgres")
+            print("   docker-compose logs postgres")
+            raise
 
     def __del__(self):
         """Close database session"""
         if hasattr(self, 'db'):
-            self.db.close()
+            try:
+                self.db.close()
+            except:
+                pass
 
     def create_admin(self, email: str, password: str, full_name: str = None) -> bool:
         """Create a new admin user
@@ -256,7 +294,10 @@ def interactive_mode():
     print("🎯 Agile Planning Poker - Admin User Manager")
     print("=" * 70 + "\n")
     
-    manager = AdminManager()
+    try:
+        manager = AdminManager()
+    except Exception as e:
+        sys.exit(1)
     
     while True:
         print("\n📌 Choose an action:")
@@ -359,6 +400,10 @@ def main():
   python scripts/create_admin.py --promote --email user@example.com
   python scripts/create_admin.py --demote --email admin@example.com
   python scripts/create_admin.py --delete --email user@example.com
+
+In Docker:
+  docker-compose exec api python scripts/create_admin.py
+  docker-compose exec api python scripts/create_admin.py --email admin@company.com --password secure123
         """
     )
     
@@ -372,7 +417,11 @@ def main():
     parser.add_argument("--delete", action="store_true", help="Delete user")
     
     args = parser.parse_args()
-    manager = AdminManager()
+    
+    try:
+        manager = AdminManager()
+    except Exception as e:
+        sys.exit(1)
     
     # If no arguments provided, use interactive mode
     if not any([args.email, args.reset, args.list, args.promote, args.demote, args.delete]):
@@ -437,6 +486,10 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n\n👋 Interrupted by user")
         sys.exit(0)
+    except SystemExit as e:
+        sys.exit(e.code)
     except Exception as e:
         print(f"\n❌ Fatal error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
