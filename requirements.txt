@@ -1,0 +1,44 @@
+# Core dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+pydantic-settings==2.1.0
+
+# Database
+SQLAlchemy==2.0.23
+alembic==1.13.0
+psycopg2-binary==2.9.9
+
+# Authentication
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+pyJWT==2.8.1
+bcrypt==4.1.1
+passlib==1.7.4
+
+# Jira integration
+atlassian-python-api==3.41.0
+requests==2.31.0
+
+# WebSocket
+websockets==12.0
+aioredis==2.0.1
+redis==5.0.1
+
+# Utilities
+python-dotenv==1.0.0
+pytz==2023.3
+pydantic-extra-types==2.3.0
+
+# Logging and monitoring
+python-json-logger==2.0.7
+prometheus-client==0.19.0
+
+# Email
+email-validator==2.1.0
+
+# CORS
+fastapi-cors==0.0.6
+
+# Rate limiting
+slowapi==0.1.9
