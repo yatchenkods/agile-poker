@@ -24,16 +24,20 @@ class EstimationService:
             existing.story_points = estimate_data.story_points
             db.add(existing)
         else:
-            # Create new estimate
-            db_estimate = Estimate(**estimate_data.dict())
+            # Create new estimate (exclude session_id as it's not in the model)
+            estimate_dict = estimate_data.dict(exclude={'session_id'})
+            db_estimate = Estimate(**estimate_dict)
             db.add(db_estimate)
         
         db.commit()
         
+        # Get the final estimate object (existing or newly created)
+        final_estimate = existing if existing else db_estimate
+        
         # Check if we should auto-apply the estimate
         EstimationService._check_consensus(db, estimate_data.issue_id)
         
-        return existing or db_estimate
+        return final_estimate
 
     @staticmethod
     def get_estimates(
