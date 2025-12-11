@@ -9,12 +9,12 @@ SQLAlchemy==2.0.23
 alembic==1.13.0
 psycopg2-binary==2.9.9
 
-# Authentication
+# Authentication - FIXED VERSIONS
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.6
-pyJWT==2.8.1
-bcrypt==4.1.1
-passlib==1.7.4
+PyJWT==2.8.1
+bcrypt==4.1.2
+passlib[bcrypt]==1.7.4
 
 # Jira integration
 atlassian-python-api==3.41.0
