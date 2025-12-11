@@ -36,9 +36,9 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY . .
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
+# # Create non-root user
+# RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# USER appuser
 
 # Expose port
 EXPOSE 8000
