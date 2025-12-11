@@ -28,12 +28,12 @@ function Login({ onLogin }) {
 
     try {
       if (isLogin) {
-        // Login - use FormData for OAuth2 password flow
-        const formData = new FormData();
-        formData.append('username', email);
-        formData.append('password', password);
+        // Login - send form data with URLSearchParams
+        const params = new URLSearchParams();
+        params.append('username', email);
+        params.append('password', password);
 
-        const res = await api.post('/auth/login', formData, {
+        const res = await api.post('/auth/login', params, {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
@@ -51,11 +51,11 @@ function Login({ onLogin }) {
         });
 
         // Auto-login after registration
-        const formData = new FormData();
-        formData.append('username', email);
-        formData.append('password', password);
+        const params = new URLSearchParams();
+        params.append('username', email);
+        params.append('password', password);
 
-        const loginRes = await api.post('/auth/login', formData, {
+        const loginRes = await api.post('/auth/login', params, {
           headers: {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
@@ -110,6 +110,7 @@ function Login({ onLogin }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 required={!isLogin}
+                disabled={loading}
               />
             )}
             <TextField
@@ -159,12 +160,13 @@ function Login({ onLogin }) {
 
           {isLogin && (
             <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+              <Typography variant="caption" color="textSecondary" display="block">
+                <strong>Demo Credentials:</strong>
+              </Typography>
               <Typography variant="caption" color="textSecondary">
-                Demo credentials:
+                📧 Email: admin@company.com
                 <br />
-                Email: admin@company.com
-                <br />
-                Password: SecurePass123
+                🔑 Password: SecurePass123
               </Typography>
             </Box>
           )}
