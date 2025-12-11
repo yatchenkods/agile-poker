@@ -39,7 +39,6 @@ function EstimationCard({ issue, session }) {
     setError(null);
     try {
       await api.post('/estimates/', {
-        session_id: session.id,
         issue_id: issue.id,
         story_points: selectedPoints,
         user_id: user.id,
@@ -58,7 +57,7 @@ function EstimationCard({ issue, session }) {
     }
   };
 
-  if (error) {
+  if (error && error !== 'Not authenticated') {
     return (
       <Card>
         <CardContent>
@@ -127,9 +126,9 @@ function EstimationCard({ issue, session }) {
           </Alert>
         )}
 
-        {error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
-            {error}
+        {error && error === 'Not authenticated' && (
+          <Alert severity="warning" sx={{ mt: 2 }}>
+            ⚠️ Please log in to submit estimates
           </Alert>
         )}
       </CardContent>
