@@ -33,12 +33,13 @@ function EstimationCard({ issue, session }) {
   }, []);
 
   const handleSubmitEstimate = async () => {
-    if (!selectedPoints || !user) return;
+    if (!selectedPoints || !user || !session) return;
 
     setLoading(true);
     setError(null);
     try {
       await api.post('/estimates/', {
+        session_id: session.id,
         issue_id: issue.id,
         story_points: selectedPoints,
         user_id: user.id,
@@ -114,7 +115,7 @@ function EstimationCard({ issue, session }) {
           <Button
             variant="contained"
             onClick={handleSubmitEstimate}
-            disabled={!selectedPoints || loading || !user}
+            disabled={!selectedPoints || loading || !user || !session}
           >
             {loading ? 'Submitting...' : 'Submit Estimate'}
           </Button>
