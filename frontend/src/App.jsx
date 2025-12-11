@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Container, AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
+import HomeIcon from '@mui/icons-material/Home';
 
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -10,6 +11,7 @@ import Admin from './pages/Admin';
 import { api, isAuthenticated, logout } from './services/api';
 
 function App() {
+  const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(isAuthenticated());
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -31,14 +33,36 @@ function App() {
     setCurrentUser(null);
   };
 
+  const handleLogoClick = () => {
+    navigate('/');
+  };
+
   return (
     <>
       {isLoggedIn && (
         <AppBar position="sticky">
           <Toolbar>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              🎲 Agile Planning Poker
-            </Typography>
+            {/* Clickable Logo */}
+            <Box
+              onClick={handleLogoClick}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                cursor: 'pointer',
+                '&:hover': {
+                  opacity: 0.8,
+                },
+                transition: 'opacity 0.2s',
+                flexGrow: 1,
+              }}
+            >
+              <Typography variant="h6" component="div" sx={{ fontWeight: 'bold' }}>
+                🎲 Agile Planning Poker
+              </Typography>
+            </Box>
+
+            {/* User Info */}
             {currentUser && (
               <Box sx={{ mr: 2 }}>
                 <Typography variant="body2">
@@ -46,11 +70,25 @@ function App() {
                 </Typography>
               </Box>
             )}
+
+            {/* Home Button */}
+            <Button
+              color="inherit"
+              onClick={handleLogoClick}
+              startIcon={<HomeIcon />}
+              sx={{ mr: 1 }}
+            >
+              Home
+            </Button>
+
+            {/* Admin Button */}
             {currentUser?.is_admin && (
               <Button color="inherit" href="/admin" sx={{ mr: 1 }}>
                 Admin
               </Button>
             )}
+
+            {/* Logout Button */}
             <Button color="inherit" onClick={handleLogout} startIcon={<LogoutIcon />}>
               Logout
             </Button>
