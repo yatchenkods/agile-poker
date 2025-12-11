@@ -8,7 +8,9 @@ import { api } from '../services/api';
 const STORY_POINTS = [1, 2, 4, 8, 16];
 
 function EstimationCard({ issue, session, onEstimateSubmitted }) {
+  // Track selected points only for THIS issue
   const [selectedPoints, setSelectedPoints] = useState(null);
+  // Track user's submitted estimate for THIS issue
   const [userEstimate, setUserEstimate] = useState(null);
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -16,7 +18,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
   const [error, setError] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
 
-  // Fetch current user and their existing estimate
+  // Fetch current user and their existing estimate for THIS specific issue
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -30,19 +32,24 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
         const userRes = await api.get('/auth/me');
         setUser(userRes.data);
 
-        // Get estimates for this issue to find user's estimate
+        // Get estimates ONLY for THIS specific issue
         const estimatesRes = await api.get(`/estimates/`, {
           params: { issue_id: issue.id },
         });
 
-        // Find current user's estimate
+        // Find current user's estimate for THIS issue
         const currentUserEstimate = estimatesRes.data.find(
           (e) => e.user_id === userRes.data.id
         );
 
         if (currentUserEstimate) {
           setUserEstimate(currentUserEstimate);
+          // Initialize selectedPoints with user's existing estimate
           setSelectedPoints(currentUserEstimate.story_points);
+        } else {
+          // No estimate yet, start fresh
+          setSelectedPoints(null);
+          setUserEstimate(null);
         }
       } catch (err) {
         console.error('Failed to fetch data:', err);
@@ -54,7 +61,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     };
 
     fetchData();
-  }, [issue.id]);
+  }, [issue.id]); // Re-fetch when issue changes
 
   const handleSubmitEstimate = async () => {
     if (!selectedPoints || !user || !session) return;
@@ -69,13 +76,14 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
         user_id: user.id,
       });
 
-      // Update state with the new estimate
-      setUserEstimate({
+      // Update state with the new estimate for THIS issue
+      const newEstimate = {
         id: userEstimate?.id,
         issue_id: issue.id,
         user_id: user.id,
         story_points: selectedPoints,
-      });
+      };
+      setUserEstimate(newEstimate);
 
       setSubmitted(true);
       setIsEditing(false);
