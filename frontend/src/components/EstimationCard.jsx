@@ -11,6 +11,8 @@ const STORY_POINTS = [1, 2, 4, 8, 16];
 function EstimationCard({ issue, session, onEstimateSubmitted }) {
   // Track selected points only for THIS issue
   const [selectedPoints, setSelectedPoints] = useState(null);
+  // Track if joker is selected
+  const [isJoker, setIsJoker] = useState(false);
   // Track user's submitted estimate for THIS issue
   const [userEstimate, setUserEstimate] = useState(null);
   const [submitted, setSubmitted] = useState(false);
@@ -45,11 +47,18 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
 
         if (currentUserEstimate) {
           setUserEstimate(currentUserEstimate);
-          // Initialize selectedPoints with user's existing estimate
-          setSelectedPoints(currentUserEstimate.story_points);
+          // Initialize selectedPoints and joker status with user's existing estimate
+          if (currentUserEstimate.is_joker) {
+            setIsJoker(true);
+            setSelectedPoints(null);
+          } else {
+            setIsJoker(false);
+            setSelectedPoints(currentUserEstimate.story_points);
+          }
         } else {
           // No estimate yet, start fresh
           setSelectedPoints(null);
+          setIsJoker(false);
           setUserEstimate(null);
         }
       } catch (err) {
@@ -65,7 +74,8 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
   }, [issue.id]); // Re-fetch when issue changes
 
   const handleSubmitEstimate = async () => {
-    if (!selectedPoints || !user || !session) return;
+    if (!selectedPoints && !isJoker) return;
+    if (!user || !session) return;
 
     setLoading(true);
     setError(null);
@@ -73,8 +83,9 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
       await api.post('/estimates/', {
         session_id: session.id,
         issue_id: issue.id,
-        story_points: selectedPoints,
+        story_points: selectedPoints || 0, // Joker uses 0 for story_points
         user_id: user.id,
+        is_joker: isJoker,
       });
 
       // Update state with the new estimate for THIS issue
@@ -82,7 +93,8 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
         id: userEstimate?.id,
         issue_id: issue.id,
         user_id: user.id,
-        story_points: selectedPoints,
+        story_points: selectedPoints || 0,
+        is_joker: isJoker,
       };
       setUserEstimate(newEstimate);
 
@@ -92,7 +104,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
 
       // Notify parent component
       if (onEstimateSubmitted) {
-        onEstimateSubmitted(issue.id, selectedPoints);
+        onEstimateSubmitted(issue.id, isJoker ? 'J' : selectedPoints);
       }
     } catch (err) {
       console.error('Failed to submit estimate:', err);
@@ -120,6 +132,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
   };
 
   const jiraUrl = getJiraUrl();
+  const displayValue = userEstimate?.is_joker ? 'J' : userEstimate?.story_points;
 
   if (error && error !== 'Not authenticated') {
     return (
@@ -183,12 +196,19 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
             <Box sx={{ textAlign: 'right', ml: 2 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <CheckCircleIcon sx={{ color: 'success.main', fontSize: '1.5rem' }} />
-                <Typography variant="h6" sx={{ color: 'success.main' }}>
-                  {userEstimate.story_points}
+                <Typography
+                  variant="h6"
+                  sx={{
+                    color: 'success.main',
+                    fontWeight: 'bold',
+                    fontSize: userEstimate.is_joker ? '1.8rem' : '1.5rem',
+                  }}
+                >
+                  {displayValue}
                 </Typography>
               </Box>
               <Typography variant="caption" color="textSecondary">
-                Your estimate
+                {userEstimate.is_joker ? 'Joker (abstain)' : 'Your estimate'}
               </Typography>
             </Box>
           )}
@@ -226,21 +246,51 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
               {STORY_POINTS.map((points) => (
                 <Button
                   key={points}
-                  variant={selectedPoints === points ? 'contained' : 'outlined'}
-                  onClick={() => setSelectedPoints(points)}
+                  variant={selectedPoints === points && !isJoker ? 'contained' : 'outlined'}
+                  onClick={() => {
+                    setSelectedPoints(points);
+                    setIsJoker(false);
+                  }}
                   disabled={loading}
                   sx={{ minWidth: 60 }}
                 >
                   {points}
                 </Button>
               ))}
+              {/* Joker Card Button */}
+              <Button
+                variant={isJoker ? 'contained' : 'outlined'}
+                onClick={() => {
+                  setIsJoker(!isJoker);
+                  if (!isJoker) {
+                    setSelectedPoints(null);
+                  }
+                }}
+                disabled={loading}
+                sx={{
+                  minWidth: 60,
+                  backgroundColor: isJoker ? '#FFD700' : undefined,
+                  color: isJoker ? '#000' : undefined,
+                  '&:hover': {
+                    backgroundColor: isJoker ? '#FFC700' : undefined,
+                  },
+                }}
+                title="Abstain from voting (marked as voted but not counted in estimate)"
+              >
+                J
+              </Button>
             </Box>
+
+            {/* Info text about Joker */}
+            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
+              💡 <strong>J (Joker)</strong> — Abstain from voting. You'll be marked as voted, but your vote won't affect the estimate.
+            </Typography>
 
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 variant="contained"
                 onClick={handleSubmitEstimate}
-                disabled={!selectedPoints || loading || !user || !session}
+                disabled={!selectedPoints && !isJoker || loading || !user || !session}
               >
                 {loading ? 'Submitting...' : 'Submit Estimate'}
               </Button>
@@ -249,7 +299,13 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                   variant="outlined"
                   onClick={() => {
                     setIsEditing(false);
-                    setSelectedPoints(userEstimate.story_points);
+                    if (userEstimate.is_joker) {
+                      setIsJoker(true);
+                      setSelectedPoints(null);
+                    } else {
+                      setIsJoker(false);
+                      setSelectedPoints(userEstimate.story_points);
+                    }
                   }}
                   disabled={loading}
                 >
