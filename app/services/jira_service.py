@@ -40,7 +40,7 @@ class JiraService:
                 logger.warning(f"No sprints found for project {project_key}")
                 return []
 
-            # Find sprint by name
+            # Find sprint by name (case-insensitive)
             sprint = next(
                 (s for s in sprints if s.get('name', '').lower() == sprint_name.lower()),
                 None
@@ -65,7 +65,7 @@ class JiraService:
 
     def _get_project_sprints(self, project_key: str) -> List[Dict]:
         """
-        Get all sprints for a project
+        Get all sprints for a project by checking all boards
 
         Args:
             project_key: Jira project key
@@ -74,13 +74,14 @@ class JiraService:
             List of sprints
         """
         try:
-            logger.debug(f"Getting boards for project {project_key}")
+            logger.debug(f"Getting sprints for project {project_key}")
             
-            # Get board ID first
+            # Try to get all boards for the project
+            all_sprints = []
             boards_url = f"{self.jira_url}/rest/agile/1.0/board"
-            params = {'projectKey': project_key}
+            params = {'projectKey': project_key, 'maxResults': 50}
             
-            logger.debug(f"Requesting boards from {boards_url} with params {params}")
+            logger.debug(f"Requesting boards from {boards_url}")
             response = requests.get(
                 boards_url,
                 params=params,
@@ -90,35 +91,73 @@ class JiraService:
             response.raise_for_status()
 
             boards = response.json().get('values', [])
-            logger.debug(f"Found {len(boards)} boards for project {project_key}")
+            logger.info(f"Found {len(boards)} board(s) for project {project_key}")
             
             if not boards:
                 logger.warning(f"No boards found for project {project_key}")
                 return []
 
-            board_id = boards[0]['id']
-            logger.debug(f"Using board ID {board_id}")
-
-            # Get sprints for board
-            sprints_url = f"{self.jira_url}/rest/agile/1.0/board/{board_id}/sprint"
-            logger.debug(f"Requesting sprints from {sprints_url}")
+            # Get sprints from each board
+            for board in boards:
+                board_id = board.get('id')
+                board_name = board.get('name')
+                board_type = board.get('type')
+                logger.debug(f"Processing board {board_id} ({board_name}, type: {board_type})")
+                
+                try:
+                    sprints = self._get_board_sprints(board_id)
+                    logger.info(f"Found {len(sprints)} sprint(s) on board {board_name}")
+                    all_sprints.extend(sprints)
+                except Exception as e:
+                    logger.warning(f"Error fetching sprints for board {board_id}: {e}")
+                    continue
             
-            response = requests.get(
-                sprints_url,
-                auth=self.auth,
-                timeout=10
-            )
-            response.raise_for_status()
-
-            sprints = response.json().get('values', [])
-            logger.debug(f"Found {len(sprints)} sprints for board {board_id}")
-            return sprints
+            logger.info(f"Total sprints found: {len(all_sprints)}")
+            if all_sprints:
+                logger.debug(f"Available sprints: {[s.get('name') for s in all_sprints]}")
+            
+            return all_sprints
 
         except requests.exceptions.RequestException as e:
             logger.error(f"HTTP error fetching sprints: {e}", exc_info=True)
             return []
         except Exception as e:
             logger.error(f"Error fetching sprints: {e}", exc_info=True)
+            return []
+
+    def _get_board_sprints(self, board_id: int) -> List[Dict]:
+        """
+        Get sprints for a specific board
+
+        Args:
+            board_id: Board ID
+
+        Returns:
+            List of sprints
+        """
+        try:
+            sprints_url = f"{self.jira_url}/rest/agile/1.0/board/{board_id}/sprint"
+            params = {'maxResults': 50}
+            
+            logger.debug(f"Requesting sprints from {sprints_url}")
+            
+            response = requests.get(
+                sprints_url,
+                params=params,
+                auth=self.auth,
+                timeout=10
+            )
+            response.raise_for_status()
+
+            sprints = response.json().get('values', [])
+            logger.debug(f"Found {len(sprints)} sprints on board {board_id}")
+            return sprints
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Error fetching sprints for board {board_id}: {e}")
+            return []
+        except Exception as e:
+            logger.warning(f"Unexpected error fetching sprints for board {board_id}: {e}")
             return []
 
     def _get_sprint_issues_by_id(self, sprint_id: int, project_key: str) -> List[Dict]:
@@ -152,8 +191,14 @@ class JiraService:
             
             issues = []
             for issue in issues_data:
+                # Filter by project key to ensure we only get issues from this project
+                issue_key = issue.get('key', '')
+                if not issue_key.startswith(project_key + '-'):
+                    logger.debug(f"Skipping issue {issue_key} - not in project {project_key}")
+                    continue
+                
                 issue_obj = {
-                    'key': issue.get('key', ''),
+                    'key': issue_key,
                     'title': issue.get('fields', {}).get('summary', ''),
                     'description': issue.get('fields', {}).get('description', ''),
                     'issue_type': issue.get('fields', {}).get('issuetype', {}).get('name', ''),
