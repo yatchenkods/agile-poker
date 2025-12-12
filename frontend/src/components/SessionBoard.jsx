@@ -254,7 +254,7 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
         )}
       </Grid>
 
-      {/* Estimation Area - Right Side */}
+      {/* Estimation Area - Right Side (Fixed, doesn't scroll) */}
       <Grid 
         item 
         xs={12} 
@@ -262,36 +262,18 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
         sx={{
           display: 'flex',
           flexDirection: 'column',
-          minHeight: 0
+          minHeight: 0,
+          position: 'sticky',
+          top: 0,
+          height: 'fit-content',
         }}
       >
         {selectedIssue ? (
-          <>
-            {/* Sticky Title for EstimationCard */}
-            <Box
-              sx={{
-                position: 'sticky',
-                top: 0,
-                backgroundColor: 'white',
-                zIndex: 10,
-                pb: 1.5,
-                mb: 1,
-                borderBottom: '2px solid #e0e0e0',
-              }}
-            >
-              <Typography variant="h6" sx={{ mb: 0 }}>
-                {selectedIssue.jira_key}: {selectedIssue.title}
-              </Typography>
-            </Box>
-            
-            <Box sx={{ flex: 1, overflowY: 'auto', pr: 1 }}>
-              <EstimationCard
-                issue={selectedIssue}
-                session={session}
-                onEstimateSubmitted={handleEstimateSubmitted}
-              />
-            </Box>
-          </>
+          <EstimationCard
+            issue={selectedIssue}
+            session={session}
+            onEstimateSubmitted={handleEstimateSubmitted}
+          />
         ) : (
           <Typography color="textSecondary">Select an issue to start estimating</Typography>
         )}
