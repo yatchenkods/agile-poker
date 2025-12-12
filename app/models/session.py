@@ -20,16 +20,16 @@ class SessionStatus(str, Enum):
 session_users = Table(
     "session_users",
     Base.metadata,
-    Column("session_id", Integer, ForeignKey("sessions.id"), primary_key=True),
-    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column("session_id", Integer, ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
 
 # Association table for many-to-many relationship (estimators)
 session_estimators = Table(
     "session_estimators",
     Base.metadata,
-    Column("session_id", Integer, ForeignKey("sessions.id"), primary_key=True),
-    Column("user_id", Integer, ForeignKey("users.id"), primary_key=True),
+    Column("session_id", Integer, ForeignKey("sessions.id", ondelete="CASCADE"), primary_key=True),
+    Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
 )
 
 
@@ -50,13 +50,17 @@ class Session(Base):
 
     # Relationships
     participants = relationship(
-        "User", secondary=session_users, back_populates="sessions"
+        "User",
+        secondary=session_users,
+        back_populates="sessions",
+        cascade="all",
     )
     estimators = relationship(
         "User",
         secondary=session_estimators,
         backref="estimating_sessions",
         foreign_keys=[session_estimators.c.session_id, session_estimators.c.user_id],
+        cascade="all",
     )
     issues = relationship("Issue", back_populates="session", cascade="all, delete-orphan")
     created_by = relationship("User", foreign_keys=[created_by_id])

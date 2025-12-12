@@ -181,16 +181,24 @@ function SessionDetail() {
       // Add new estimators
       const toAdd = selectedEstimators.filter(id => !currentEstimatorIds.includes(id));
       for (const userId of toAdd) {
-        await api.post(`/sessions/${sessionId}/estimators/${userId}`);
+        // API returns full session data with updated estimators list
+        const addRes = await api.post(`/sessions/${sessionId}/estimators/${userId}`);
+        if (addRes.data) {
+          setSession(addRes.data);
+        }
       }
       
       // Remove estimators
       const toRemove = currentEstimatorIds.filter(id => !selectedEstimators.includes(id));
       for (const userId of toRemove) {
-        await api.delete(`/sessions/${sessionId}/estimators/${userId}`);
+        // API returns full session data with updated estimators list
+        const removeRes = await api.delete(`/sessions/${sessionId}/estimators/${userId}`);
+        if (removeRes.data) {
+          setSession(removeRes.data);
+        }
       }
 
-      // Reload session data
+      // Reload session data to ensure everything is up to date
       await loadSessionData();
       handleEditClose();
     } catch (err) {

@@ -60,11 +60,21 @@ async def create_session(
     return session
 
 
-@router.get("/", response_model=List[SessionResponse])
+@router.get("/", response_model=List[SessionDetailResponse])
 async def list_sessions(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    """List all sessions"""
+    """List all sessions with full details including estimators"""
     sessions = session_service.get_sessions(db, skip=skip, limit=limit)
-    return sessions
+    # Convert enriched session dicts to SessionDetailResponse by fetching full models
+    from app.models.session import Session as SessionModel
+    from sqlalchemy.orm import joinedload
+    
+    db_sessions = db.query(SessionModel).options(
+        joinedload(SessionModel.participants),
+        joinedload(SessionModel.estimators),
+        joinedload(SessionModel.issues)
+    ).offset(skip).limit(limit).all()
+    
+    return [session_service._enrich_session_detail(session) for session in db_sessions]
 
 
 @router.get("/{session_id}", response_model=SessionDetailResponse)
@@ -73,7 +83,7 @@ async def get_session(session_id: int, db: Session = Depends(get_db)):
     session = session_service.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    return session
+    return session_service._enrich_session_detail(session)
 
 
 @router.put("/{session_id}", response_model=SessionResponse)
@@ -108,7 +118,14 @@ async def delete_session(
     Delete a session and all its associated data
     
     Only the session creator can delete the session.
-    Deletes all issues, estimates, and participants associated with the session.
+    Deletes all issues, estimates, participants, and estimators associated with the session.
+    
+    Deletion order:
+    1. Clear estimators relationship
+    2. Clear participants relationship
+    3. Delete all estimates (foreign key references to issues)
+    4. Delete all issues (cascade delete from session)
+    5. Delete the session itself
     """
     session = session_service.get_session(db, session_id)
     if not session:
@@ -121,24 +138,72 @@ async def delete_session(
         )
     
     try:
-        logger.info(f"Deleting session {session_id}")
+        logger.info(f"Starting deletion of session {session_id}")
         
-        # Delete all issues associated with the session
+        # Step 1: Remove all estimators from the session
+        # This clears the session_estimators association table
+        estimators_count = len(session.estimators)
+        session.estimators.clear()
+        logger.debug(f"Cleared {estimators_count} estimator(s) for session {session_id}")
+        
+        # Step 2: Remove all participants from the session
+        # This clears the session_users association table
+        participants_count = len(session.participants)
+        session.participants.clear()
+        logger.debug(f"Cleared {participants_count} participant(s) for session {session_id}")
+        
+        # Step 3: Flush changes to relationships
+        db.flush()
+        logger.debug("Flushed relationship changes")
+        
+        # Step 4: Delete all estimates associated with issues in this session
+        # This must be done BEFORE deleting issues to avoid foreign key violations
+        from app.models.estimate import Estimate
         from app.models.issue import Issue
-        db.query(Issue).filter(Issue.session_id == session_id).delete()
         
-        # Delete the session itself
+        # Get all issues in this session
+        issues = db.query(Issue).filter(Issue.session_id == session_id).all()
+        logger.debug(f"Found {len(issues)} issue(s) in session {session_id}")
+        
+        # Delete all estimates for these issues
+        estimate_count = 0
+        for issue in issues:
+            # Delete estimates through ORM to trigger cascade
+            for estimate in issue.estimates:
+                db.delete(estimate)
+                estimate_count += 1
+        
+        db.flush()
+        logger.info(f"Deleted {estimate_count} estimate(s) from {len(issues)} issue(s)")
+        
+        # Step 5: Delete all issues through ORM (cascade delete)
+        # Using ORM ensures cascade relationships are respected
+        issues_deleted = 0
+        for issue in issues:
+            db.delete(issue)
+            issues_deleted += 1
+        
+        db.flush()
+        logger.info(f"Deleted {issues_deleted} issue(s) from session {session_id}")
+        
+        # Step 6: Delete the session itself
         db.delete(session)
+        db.flush()
         db.commit()
         
-        logger.info(f"Session {session_id} deleted successfully")
+        logger.info(
+            f"Session {session_id} deleted successfully. "
+            f"Removed: {estimators_count} estimators, {participants_count} participants, "
+            f"{estimate_count} estimates, {issues_deleted} issues"
+        )
         return {"message": "Session deleted successfully"}
+        
     except Exception as e:
-        logger.error(f"Error deleting session {session_id}: {e}")
+        logger.error(f"Error deleting session {session_id}: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error deleting session",
+            detail=f"Error deleting session: {str(e)}",
         )
 
 
@@ -407,7 +472,7 @@ async def remove_user_from_session(
     return {"message": "User removed from session"}
 
 
-@router.post("/{session_id}/estimators/{user_id}", response_model=SessionResponse)
+@router.post("/{session_id}/estimators/{user_id}", response_model=SessionDetailResponse)
 async def add_estimator_to_session(
     session_id: int,
     user_id: int,
@@ -426,12 +491,12 @@ async def add_estimator_to_session(
         )
     
     session_service.add_estimator_to_session(db, session_id, user_id)
-    # Return updated session
+    # Return updated session with full details
     updated_session = session_service.get_session(db, session_id)
-    return session_service._enrich_session(updated_session)
+    return session_service._enrich_session_detail(updated_session)
 
 
-@router.delete("/{session_id}/estimators/{user_id}", response_model=SessionResponse)
+@router.delete("/{session_id}/estimators/{user_id}", response_model=SessionDetailResponse)
 async def remove_estimator_from_session(
     session_id: int,
     user_id: int,
@@ -450,6 +515,6 @@ async def remove_estimator_from_session(
         )
     
     session_service.remove_estimator_from_session(db, session_id, user_id)
-    # Return updated session
+    # Return updated session with full details
     updated_session = session_service.get_session(db, session_id)
-    return session_service._enrich_session(updated_session)
+    return session_service._enrich_session_detail(updated_session)
