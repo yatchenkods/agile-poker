@@ -8,7 +8,7 @@ import logging
 
 from app.config import settings
 from app.database import Base, engine
-from app.routes import auth, sessions, estimates, issues, users, admin
+from app.routes import auth, sessions, estimates, issues, users, admin, jira
 
 # Configure logging
 logging.basicConfig(
@@ -65,6 +65,7 @@ app.include_router(sessions.router, prefix="/api/v1/sessions", tags=["sessions"]
 app.include_router(estimates.router, prefix="/api/v1/estimates", tags=["estimates"])
 app.include_router(issues.router, prefix="/api/v1/issues", tags=["issues"])
 app.include_router(admin.router, prefix="/api/v1/admin", tags=["admin"])
+app.include_router(jira.router, prefix="/api/v1/jira", tags=["jira"])
 
 
 @app.exception_handler(Exception)
