@@ -235,8 +235,9 @@ function Home() {
                 <Typography variant="body2" color="textSecondary" gutterBottom>
                   {session.description}
                 </Typography>
-                <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                   <Typography variant="caption">👥 {session.participant_count}</Typography>
+                  <Typography variant="caption">👤 {session.estimator_count}</Typography>
                   <Typography variant="caption">📋 {session.issue_count}</Typography>
                 </Box>
               </CardContent>
