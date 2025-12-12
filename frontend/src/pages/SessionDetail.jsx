@@ -378,21 +378,6 @@ function SessionDetail() {
                 </Box>
               )}
             </Box>
-
-            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <Typography variant="body2">
-                Status: <strong>{session.status}</strong>
-              </Typography>
-              <Typography variant="body2">
-                Participants: <strong>{session.participant_count}</strong>
-              </Typography>
-              <Typography variant="body2">
-                Estimators: <strong>{session.estimator_count}</strong>
-              </Typography>
-              <Typography variant="body2">
-                Issues: <strong>{session.issue_count}</strong>
-              </Typography>
-            </Box>
           </Box>
 
           {isCreator && (
