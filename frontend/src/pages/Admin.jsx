@@ -42,7 +42,7 @@ import { api } from '../services/api';
 function Admin() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [activeTab, setActiveTab] = useState(0); // 0=Statistics, 1=Users, 2=Issues
+  const [activeTab, setActiveTab] = useState(0);
   const [stats, setStats] = useState(null);
   const [issues, setIssues] = useState([]);
   const [users, setUsers] = useState([]);
@@ -52,7 +52,6 @@ function Admin() {
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
   
-  // Reset password dialog
   const [resetDialog, setResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
@@ -61,7 +60,6 @@ function Admin() {
   const [resetMessage, setResetMessage] = useState(null);
   const [resetError, setResetError] = useState(null);
 
-  // Add user dialog
   const [addUserDialog, setAddUserDialog] = useState(false);
   const [newUserData, setNewUserData] = useState({
     email: '',
@@ -72,7 +70,6 @@ function Admin() {
   const [addUserError, setAddUserError] = useState(null);
   const [addUserMessage, setAddUserMessage] = useState(null);
 
-  // Delete user dialog
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -139,7 +136,6 @@ function Admin() {
     }
   };
 
-  // Check permission and show error if not admin
   const checkPermission = () => {
     if (!isAdmin) {
       setPermissionError('You do not have permission to perform this action. Admin rights required.');
@@ -149,7 +145,6 @@ function Admin() {
     return true;
   };
 
-  // RESET PASSWORD
   const handleOpenResetDialog = (user) => {
     if (!checkPermission()) return;
     
@@ -212,7 +207,6 @@ function Admin() {
     }
   };
 
-  // ADD USER
   const handleOpenAddUserDialog = () => {
     if (!checkPermission()) return;
     
@@ -274,7 +268,6 @@ function Admin() {
     }
   };
 
-  // DELETE USER
   const handleOpenDeleteDialog = (user) => {
     if (!checkPermission()) return;
     
@@ -313,9 +306,7 @@ function Admin() {
     }
   };
 
-  // TOGGLE USER STATUS
   const handleToggleUserStatus = async (user) => {
-    // Prevent changing own status
     if (currentUser && user.id === currentUser.id) {
       setPermissionError('You cannot change your own status to prevent self-lockout.');
       setTimeout(() => setPermissionError(null), 5000);
@@ -325,6 +316,7 @@ function Admin() {
     if (!checkPermission()) return;
     
     try {
+      console.log(`Toggling user ${user.id} status to ${!user.is_active}`);
       const updatedUsers = users.map(u => {
         if (u.id === user.id) {
           return { ...u, is_active: !u.is_active };
@@ -336,11 +328,22 @@ function Admin() {
       await api.put(`/users/${user.id}`, {
         is_active: !user.is_active,
       });
+      console.log('User status updated successfully');
     } catch (err) {
       console.error('Failed to update user status:', err);
+      console.error('Error response:', err.response?.data);
+      console.error('Error status:', err.response?.status);
+      
       if (err.response?.status === 403) {
         setPermissionError('Permission denied. Admin rights required.');
+      } else if (err.response?.data?.detail) {
+        setPermissionError(`Error: ${err.response.data.detail}`);
+      } else {
+        setPermissionError(`Failed to update user status: ${err.message}`);
       }
+      setTimeout(() => setPermissionError(null), 6000);
+      
+      // Revert changes on error
       loadAdminData();
     }
   };
@@ -377,7 +380,6 @@ function Admin() {
 
   return (
     <Box>
-      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">🛠️ Admin Panel</Typography>
         <IconButton onClick={loadAdminData} title="Refresh">
@@ -403,7 +405,6 @@ function Admin() {
         </Alert>
       )}
 
-      {/* Tab Navigation */}
       <Paper sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab icon={<BarChartIcon />} iconPosition="start" label="Statistics" />
@@ -412,7 +413,6 @@ function Admin() {
         </Tabs>
       </Paper>
 
-      {/* TAB 0: STATISTICS */}
       {activeTab === 0 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
@@ -507,7 +507,6 @@ function Admin() {
         </Box>
       )}
 
-      {/* TAB 1: USERS MANAGEMENT */}
       {activeTab === 1 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -612,7 +611,6 @@ function Admin() {
         </Box>
       )}
 
-      {/* TAB 2: ISSUES MANAGEMENT */}
       {activeTab === 2 && (
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -691,7 +689,6 @@ function Admin() {
         </Box>
       )}
 
-      {/* Reset Password Dialog */}
       <Dialog open={resetDialog} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
         <DialogTitle>🔐 Reset Password</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
@@ -735,7 +732,6 @@ function Admin() {
         </DialogActions>
       </Dialog>
 
-      {/* Add User Dialog */}
       <Dialog open={addUserDialog} onClose={handleCloseAddUserDialog} maxWidth="sm" fullWidth>
         <DialogTitle>👥 Add New User</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
@@ -785,7 +781,6 @@ function Admin() {
         </DialogActions>
       </Dialog>
 
-      {/* Delete User Dialog */}
       <Dialog open={deleteDialog} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
         <DialogTitle>⚠️ Delete User</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
