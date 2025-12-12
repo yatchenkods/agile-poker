@@ -57,8 +57,6 @@ function Admin() {
 
   const loadAdminData = async () => {
     console.log('Loading admin data...');
-    setLoading(true);
-    setError(null);
     try {
       console.log('Fetching stats...');
       const statsRes = await api.get('/admin/stats');
@@ -102,6 +100,8 @@ function Admin() {
       const sessionsRes = await api.get('/sessions/');
       console.log('Sessions response:', sessionsRes.data);
       setSessions(sessionsRes.data || []);
+
+      setError(null);
     } catch (err) {
       console.error('Failed to load admin data:', err);
       console.error('Error response:', err.response);
@@ -167,14 +167,6 @@ function Admin() {
     }
   };
 
-  if (loading) {
-    return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
-        <CircularProgress />
-      </Box>
-    );
-  }
-
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -221,6 +213,13 @@ function Admin() {
       </Box>
 
       <Divider sx={{ mb: 3 }} />
+
+      {/* Loading indicator */}
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      )}
 
       {/* STATISTICS TAB */}
       {activeTab === 'stats' && (
@@ -275,6 +274,8 @@ function Admin() {
             </Grid>
           )}
 
+          {loading && !stats && <CircularProgress />}
+
           {/* Conflicting Estimates */}
           {conflicts.length > 0 && (
             <Box sx={{ mb: 4 }}>
@@ -319,6 +320,8 @@ function Admin() {
           <Typography variant="h6" sx={{ mb: 2 }}>
             👥 User Management
           </Typography>
+
+          {loading && !users.length && <CircularProgress />}
 
           {users && users.length > 0 ? (
             <TableContainer component={Paper}>
@@ -369,7 +372,7 @@ function Admin() {
               </Table>
             </TableContainer>
           ) : (
-            <Alert severity="info">No users found</Alert>
+            !loading && <Alert severity="info">No users found</Alert>
           )}
         </Box>
       )}
@@ -380,6 +383,8 @@ function Admin() {
           <Typography variant="h6" sx={{ mb: 2 }}>
             📅 Active Sessions
           </Typography>
+
+          {loading && !sessions.length && <CircularProgress />}
 
           {sessions && sessions.length > 0 ? (
             <TableContainer component={Paper}>
@@ -419,7 +424,7 @@ function Admin() {
               </Table>
             </TableContainer>
           ) : (
-            <Alert severity="info">No sessions found</Alert>
+            !loading && <Alert severity="info">No sessions found</Alert>
           )}
         </Box>
       )}
