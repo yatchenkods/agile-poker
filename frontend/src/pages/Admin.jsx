@@ -44,42 +44,58 @@ function Admin() {
   const [resetError, setResetError] = useState(null);
 
   useEffect(() => {
+    console.log('Admin component mounted, loading data...');
     loadAdminData();
   }, []);
 
   const loadAdminData = async () => {
+    console.log('Loading admin data...');
     setLoading(true);
     setError(null);
     try {
-      const [statsRes, conflictsRes, usersRes] = await Promise.all([
-        api.get('/admin/stats'),
-        api.get('/admin/conflicting-estimates'),
-        api.get('/admin/users-stats'),
-      ]);
-
+      console.log('Fetching stats...');
+      const statsRes = await api.get('/admin/stats');
+      console.log('Stats response:', statsRes.data);
       setStats(statsRes.data);
+
+      console.log('Fetching conflicting estimates...');
+      const conflictsRes = await api.get('/admin/conflicting-estimates');
+      console.log('Conflicts response:', conflictsRes.data);
       setConflicts(conflictsRes.data || []);
+
+      console.log('Fetching users stats...');
+      const usersRes = await api.get('/admin/users-stats');
+      console.log('Users response:', usersRes.data);
       setUsersStats(usersRes.data || []);
 
       // Extract users from usersStats
       if (usersRes.data && Array.isArray(usersRes.data)) {
-        const userList = usersRes.data.map((stat) => ({
-          id: stat.user_id,
-          email: stat.email,
-          full_name: stat.full_name,
-          is_active: stat.is_active,
-          is_admin: stat.is_admin || false,
-          total_estimates: stat.total_estimates,
-          participated_sessions: stat.participated_sessions,
-        }));
+        console.log('Processing users array, length:', usersRes.data.length);
+        const userList = usersRes.data.map((stat) => {
+          console.log('Processing user:', stat);
+          return {
+            id: stat.user_id,
+            email: stat.email,
+            full_name: stat.full_name,
+            is_active: stat.is_active,
+            is_admin: stat.is_admin || false,
+            total_estimates: stat.total_estimates,
+            participated_sessions: stat.participated_sessions,
+          };
+        });
+        console.log('Final users list:', userList);
         setUsers(userList);
-        console.log('Loaded users:', userList);
+      } else {
+        console.log('Users response is not an array or empty');
+        setUsers([]);
       }
     } catch (err) {
       console.error('Failed to load admin data:', err);
-      setError(err.response?.data?.detail || 'Failed to load admin data');
+      console.error('Error response:', err.response);
+      setError(err.response?.data?.detail || err.message || 'Failed to load admin data');
     } finally {
       setLoading(false);
+      console.log('Admin data loading finished');
     }
   };
 
@@ -205,7 +221,7 @@ function Admin() {
       )}
 
       {/* User Management */}
-      {users.length > 0 && (
+      {users && users.length > 0 ? (
         <Box sx={{ mb: 4 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">👥 User Management ({users.length})</Typography>
@@ -261,6 +277,10 @@ function Admin() {
             </Table>
           </TableContainer>
         </Box>
+      ) : (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          No users found or still loading user data
+        </Alert>
       )}
 
       {/* Conflicting Estimates */}
