@@ -21,6 +21,7 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
+import ErrorIcon from '@mui/icons-material/Error';
 import { api } from '../services/api';
 
 function Home() {
@@ -41,7 +42,7 @@ function Home() {
   const [importStats, setImportStats] = useState(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTest, setConnectionTest] = useState(null);
-  const [failedKeys, setFailedKeys] = useState([]);
+  const [failedIssues, setFailedIssues] = useState([]);
 
   useEffect(() => {
     loadSessions();
@@ -64,6 +65,18 @@ function Home() {
       .split(/[\s,]+/) // Split by whitespace or commas
       .map((key) => key.trim().toUpperCase())
       .filter((key) => key && /^[A-Z]+-\d+$/.test(key)); // Filter valid keys (e.g., DEVOPS-123)
+  };
+
+  // Group failed issues by error reason for better display
+  const groupFailedByReason = (failed) => {
+    const grouped = {};
+    failed.forEach((item) => {
+      if (!grouped[item.reason]) {
+        grouped[item.reason] = [];
+      }
+      grouped[item.reason].push(item);
+    });
+    return grouped;
   };
 
   const handleTestJiraConnection = async () => {
@@ -92,7 +105,7 @@ function Home() {
 
     setImportLoading(true);
     setError(null);
-    setFailedKeys([]);
+    setFailedIssues([]);
 
     try {
       const response = await api.post('/jira/import-by-keys', {
@@ -100,7 +113,7 @@ function Home() {
       });
 
       setImportedIssues(response.data.issues || []);
-      setFailedKeys(response.data.failed_keys || []);
+      setFailedIssues(response.data.failed_issues || []);
       setImportStats({
         total: response.data.count || 0,
         status: response.data.status,
@@ -109,7 +122,7 @@ function Home() {
 
       if (response.data.issues?.length === 0 && response.data.failed_count > 0) {
         setError(
-          `Failed to import ${response.data.failed_count} issue(s). Check the keys and try again.`
+          `Failed to import ${response.data.failed_count} issue(s). See details below.`
         );
       }
     } catch (err) {
@@ -149,7 +162,7 @@ function Home() {
       setImportedIssues([]);
       setImportStats(null);
       setConnectionTest(null);
-      setFailedKeys([]);
+      setFailedIssues([]);
       loadSessions();
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -169,7 +182,7 @@ function Home() {
     setImportedIssues([]);
     setImportStats(null);
     setConnectionTest(null);
-    setFailedKeys([]);
+    setFailedIssues([]);
   };
 
   const handleDialogClose = () => {
@@ -184,7 +197,7 @@ function Home() {
     setImportStats(null);
     setError(null);
     setConnectionTest(null);
-    setFailedKeys([]);
+    setFailedIssues([]);
   };
 
   if (loading) {
@@ -362,29 +375,46 @@ function Home() {
               </Alert>
             )}
 
-            {failedKeys.length > 0 && (
-              <Alert severity="warning" sx={{ mt: 2 }}>
-                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  Failed to import {failedKeys.length} issue(s):
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {failedKeys.map((key) => (
-                    <Box
-                      key={key}
-                      sx={{
-                        bgcolor: '#ffebee',
-                        p: 0.5,
-                        px: 1,
-                        borderRadius: 1,
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                      }}
-                    >
-                      {key}
+            {failedIssues.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="warning" icon={<ErrorIcon />}>
+                  <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                    Failed to import {failedIssues.length} issue(s)
+                  </Typography>
+                </Alert>
+                
+                {Object.entries(groupFailedByReason(failedIssues)).map(([reason, issues]) => (
+                  <Box key={reason} sx={{ mt: 1.5, p: 1.5, bgcolor: '#fff3e0', borderRadius: 1, border: '1px solid #ffe0b2' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1, color: '#e65100' }}>
+                      {reason}
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {issues.map((item) => (
+                        <Box key={item.key} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                          <Box
+                            sx={{
+                              bgcolor: '#ffccbc',
+                              p: 0.5,
+                              px: 1,
+                              borderRadius: 1,
+                              fontSize: '0.75rem',
+                              fontWeight: 'bold',
+                              color: '#d84315',
+                            }}
+                          >
+                            {item.key}
+                          </Box>
+                          {item.details && (
+                            <Typography variant="caption" sx={{ color: '#d84315', fontSize: '0.65rem' }}>
+                              ({item.details})
+                            </Typography>
+                          )}
+                        </Box>
+                      ))}
                     </Box>
-                  ))}
-                </Box>
-              </Alert>
+                  </Box>
+                ))}
+              </Box>
             )}
 
             {importedIssues.length > 0 && (
@@ -403,6 +433,7 @@ function Home() {
                         borderRadius: 1,
                         fontSize: '0.75rem',
                         fontWeight: 'bold',
+                        border: '1px solid #81c784',
                       }}
                     >
                       {issue.key}: {issue.title}
