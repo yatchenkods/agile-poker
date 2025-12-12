@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -18,8 +18,8 @@ import {
   Tooltip,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
-import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 
 import { api } from '../services/api';
@@ -27,6 +27,7 @@ import SessionBoard from '../components/SessionBoard';
 
 function SessionDetail() {
   const { sessionId } = useParams();
+  const navigate = useNavigate();
   const [session, setSession] = useState(null);
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -53,6 +54,11 @@ function SessionDetail() {
   const [importError, setImportError] = useState('');
   const [importedIssues, setImportedIssues] = useState([]);
   const [importStats, setImportStats] = useState(null);
+
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     loadSessionData();
@@ -204,6 +210,31 @@ function SessionDetail() {
     }
   };
 
+  // Delete session handlers
+  const handleDeleteOpen = () => {
+    setDeleteError('');
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteClose = () => {
+    setDeleteDialogOpen(false);
+  };
+
+  const handleDeleteSession = async () => {
+    setDeleteLoading(true);
+    setDeleteError('');
+
+    try {
+      await api.delete(`/sessions/${sessionId}`);
+      // Redirect to home page after successful deletion
+      navigate('/');
+    } catch (err) {
+      console.error('Failed to delete session:', err);
+      setDeleteError(err.response?.data?.detail || 'Failed to delete session');
+      setDeleteLoading(false);
+    }
+  };
+
   // Delete issue handler
   const handleDeleteIssue = async (issueId) => {
     if (!window.confirm('Are you sure you want to remove this issue from the session?')) {
@@ -224,7 +255,7 @@ function SessionDetail() {
     return <Typography>Loading session...</Typography>;
   }
 
-  if (error && !editError && !importError) {
+  if (error && !editError && !importError && !deleteError) {
     return <Alert severity="error">{error}</Alert>;
   }
 
@@ -250,15 +281,24 @@ function SessionDetail() {
                 )}
               </Box>
               {isCreator && (
-                <Tooltip title="Edit session">
-                  <IconButton
-                    color="primary"
-                    onClick={handleEditOpen}
-                    sx={{ ml: 2 }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
+                <Box sx={{ display: 'flex', gap: 1, ml: 2 }}>
+                  <Tooltip title="Edit session">
+                    <IconButton
+                      color="primary"
+                      onClick={handleEditOpen}
+                    >
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Delete session">
+                    <IconButton
+                      color="error"
+                      onClick={handleDeleteOpen}
+                    >
+                      <DeleteIcon />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
               )}
             </Box>
 
@@ -391,6 +431,38 @@ function SessionDetail() {
             startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
           >
             {importLoading ? 'Importing...' : 'Import'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Session Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onClose={handleDeleteClose} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ color: 'error.main', fontWeight: 'bold' }}>Delete Session?</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            ⚠️ This action cannot be undone. All issues and estimates will be permanently deleted.
+          </Alert>
+          <Typography>
+            Are you sure you want to delete the session <strong>"{session?.name}"</strong>?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteClose} disabled={deleteLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleDeleteSession}
+            variant="contained"
+            color="error"
+            disabled={deleteLoading}
+            startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
+          >
+            {deleteLoading ? 'Deleting...' : 'Delete Session'}
           </Button>
         </DialogActions>
       </Dialog>
