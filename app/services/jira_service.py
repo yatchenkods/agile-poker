@@ -20,6 +20,24 @@ class JiraService:
         logger.debug(f"JiraService initialized with URL: {self.jira_url}")
         logger.debug(f"JiraService auth configured: {bool(self.auth)}")
 
+    def get_sprints_for_project(self, project_key: str) -> List[Dict]:
+        """
+        Get all sprints for a project with board information
+
+        Args:
+            project_key: Jira project key (e.g., 'PROJ')
+
+        Returns:
+            List of sprints with board_id
+        """
+        try:
+            logger.info(f"Getting all sprints for project {project_key}")
+            sprints = self._get_project_sprints(project_key)
+            return sprints
+        except Exception as e:
+            logger.error(f"Error getting sprints for project: {e}", exc_info=True)
+            return []
+
     def get_sprint_issues(self, project_key: str, sprint_name: str) -> List[Dict]:
         """
         Get issues from a specific sprint in Jira
@@ -71,7 +89,7 @@ class JiraService:
             project_key: Jira project key
 
         Returns:
-            List of sprints
+            List of sprints with board information
         """
         try:
             logger.debug(f"Getting sprints for project {project_key}")
@@ -107,6 +125,11 @@ class JiraService:
                 try:
                     sprints = self._get_board_sprints(board_id)
                     logger.info(f"Found {len(sprints)} sprint(s) on board {board_name}")
+                    
+                    # Add board_id to each sprint
+                    for sprint in sprints:
+                        sprint['board_id'] = board_id
+                    
                     all_sprints.extend(sprints)
                 except Exception as e:
                     logger.warning(f"Error fetching sprints for board {board_id}: {e}")
