@@ -999,44 +999,6 @@ function Admin() {
                 {showOnlyPending &&
                   ` (pending: ${issues.filter((i) => !i.is_estimated).length})`}
               </Typography>
-              <Alert severity="info" sx={{ mb: 2 }}>
-                <Box sx={{ fontSize: '0.875rem' }}>
-                  <Box sx={{ mb: 0.5 }}>💡 <strong>Estimator Display Legend:</strong></Box>
-                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', ml: 2 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        backgroundColor: '#1f77b4',
-                        border: '2px solid white'
-                      }} />
-                      <span>Estimate submitted</span>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        backgroundColor: '#CCCCCC',
-                        border: '2px solid white',
-                        opacity: 0.6
-                      }} />
-                      <span>Awaiting estimate (?)  </span>
-                    </Box>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Box sx={{
-                        width: 24,
-                        height: 24,
-                        borderRadius: '50%',
-                        backgroundColor: '#FFD700',
-                        border: '2px solid white'
-                      }} />
-                      <span>Joker (abstain)</span>
-                    </Box>
-                  </Box>
-                </Box>
-              </Alert>
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
