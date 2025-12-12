@@ -315,6 +315,13 @@ function Admin() {
 
   // TOGGLE USER STATUS
   const handleToggleUserStatus = async (user) => {
+    // Prevent changing own status
+    if (currentUser && user.id === currentUser.id) {
+      setPermissionError('You cannot change your own status to prevent self-lockout.');
+      setTimeout(() => setPermissionError(null), 5000);
+      return;
+    }
+
     if (!checkPermission()) return;
     
     try {
@@ -534,61 +541,68 @@ function Admin() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell>{user.email}</TableCell>
-                      <TableCell>{user.full_name}</TableCell>
-                      <TableCell align="center">
-                        {user.is_admin ? (
-                          <Chip label="Admin" color="primary" size="small" />
-                        ) : (
-                          <Chip label="User" variant="outlined" size="small" />
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        <Tooltip title={isAdmin ? 'Click to toggle status' : 'Admin rights required'}>
-                          <Chip
-                            label={user.is_active ? 'Active' : 'Inactive'}
-                            color={user.is_active ? 'success' : 'default'}
-                            size="small"
-                            onClick={() => handleToggleUserStatus(user)}
-                            sx={{ cursor: isAdmin ? 'pointer' : 'not-allowed', opacity: isAdmin ? 1 : 0.6 }}
-                          />
-                        </Tooltip>
-                      </TableCell>
-                      <TableCell align="right">{user.total_estimates}</TableCell>
-                      <TableCell align="right">{user.participated_sessions}</TableCell>
-                      <TableCell align="center">
-                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                          <Tooltip title={isAdmin ? 'Reset password' : 'Admin rights required'}>
-                            <span>
-                              <Button
-                                startIcon={<VpnKeyIcon />}
-                                size="small"
-                                variant="outlined"
-                                onClick={() => handleOpenResetDialog(user)}
-                                disabled={!isAdmin}
-                              >
-                                Reset
-                              </Button>
-                            </span>
+                  {users.map((user) => {
+                    const isCurrentUser = currentUser && user.id === currentUser.id;
+                    
+                    return (
+                      <TableRow key={user.id} sx={{ opacity: isCurrentUser ? 0.7 : 1 }}>
+                        <TableCell>{user.email}{isCurrentUser && ' 👤 (You)'}</TableCell>
+                        <TableCell>{user.full_name}</TableCell>
+                        <TableCell align="center">
+                          {user.is_admin ? (
+                            <Chip label="Admin" color="primary" size="small" />
+                          ) : (
+                            <Chip label="User" variant="outlined" size="small" />
+                          )}
+                        </TableCell>
+                        <TableCell align="center">
+                          <Tooltip title={isCurrentUser ? 'You cannot change your own status' : isAdmin ? 'Click to toggle status' : 'Admin rights required'}>
+                            <Chip
+                              label={user.is_active ? 'Active' : 'Inactive'}
+                              color={user.is_active ? 'success' : 'default'}
+                              size="small"
+                              onClick={() => !isCurrentUser && handleToggleUserStatus(user)}
+                              sx={{ 
+                                cursor: isCurrentUser ? 'not-allowed' : isAdmin ? 'pointer' : 'not-allowed', 
+                                opacity: isCurrentUser ? 0.5 : isAdmin ? 1 : 0.6 
+                              }}
+                            />
                           </Tooltip>
-                          <Tooltip title={isAdmin ? 'Delete user' : 'Admin rights required'}>
-                            <span>
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleOpenDeleteDialog(user)}
-                                disabled={!isAdmin}
-                              >
-                                <DeleteIcon fontSize="small" />
-                              </IconButton>
-                            </span>
-                          </Tooltip>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                        </TableCell>
+                        <TableCell align="right">{user.total_estimates}</TableCell>
+                        <TableCell align="right">{user.participated_sessions}</TableCell>
+                        <TableCell align="center">
+                          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                            <Tooltip title={isAdmin ? 'Reset password' : 'Admin rights required'}>
+                              <span>
+                                <Button
+                                  startIcon={<VpnKeyIcon />}
+                                  size="small"
+                                  variant="outlined"
+                                  onClick={() => handleOpenResetDialog(user)}
+                                  disabled={!isAdmin}
+                                >
+                                  Reset
+                                </Button>
+                              </span>
+                            </Tooltip>
+                            <Tooltip title={isAdmin ? 'Delete user' : 'Admin rights required'}>
+                              <span>
+                                <IconButton
+                                  size="small"
+                                  color="error"
+                                  onClick={() => handleOpenDeleteDialog(user)}
+                                  disabled={!isAdmin}
+                                >
+                                  <DeleteIcon fontSize="small" />
+                                </IconButton>
+                              </span>
+                            </Tooltip>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>
