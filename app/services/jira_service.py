@@ -106,7 +106,7 @@ class JiraService:
             Dictionary with "success", "issue", "reason", and "status_code" keys
         """
         try:
-            url = f"{self.jira_url}/rest/api/3/issue/{issue_key}"
+            url = f"{self.jira_url}/rest/api/latest/issue/{issue_key}"
             logger.debug("Fetching issue from %s", url)
 
             response = requests.get(
