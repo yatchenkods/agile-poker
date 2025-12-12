@@ -246,13 +246,13 @@ async def import_issues_to_session(
                     })
                     continue
                 
-                # Create new issue - only include fields that exist in the model
+                # Create new issue - include all fields from Jira
                 new_issue = Issue(
                     session_id=session_id,
                     jira_key=issue_key,
                     title=title,
                     description=jira_issue.get("description", ""),
-                    # Note: issue_type is not stored in the model, so we skip it
+                    jira_url=jira_issue.get("jira_url"),  # Include Jira URL for linking
                 )
                 db.add(new_issue)
                 db.flush()
