@@ -18,6 +18,7 @@ import {
   Checkbox,
   Divider,
   Link,
+  Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
@@ -43,6 +44,8 @@ function Home() {
   const [importStats, setImportStats] = useState(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTest, setConnectionTest] = useState(null);
+  const [sprints, setSprints] = useState([]);
+  const [loadingSprints, setLoadingSprints] = useState(false);
 
   useEffect(() => {
     loadSessions();
@@ -56,6 +59,41 @@ function Home() {
       console.error('Failed to load sessions:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleLoadSprints = async () => {
+    if (!formData.project_key) {
+      setError('Please enter Jira Project Key first');
+      return;
+    }
+
+    setLoadingSprints(true);
+    setError(null);
+
+    try {
+      const response = await api.post('/jira/list-sprints', {
+        project_key: formData.project_key.toUpperCase(),
+      });
+
+      const sprintList = response.data.sprints.map(sprint => ({
+        id: sprint.id,
+        label: `${sprint.name} (${sprint.state})`,
+        name: sprint.name,
+      }));
+      setSprints(sprintList);
+
+      if (sprintList.length === 0) {
+        setError('No sprints found for this project');
+      }
+    } catch (err) {
+      console.error('Failed to load sprints:', err);
+      setError(
+        err.response?.data?.detail ||
+        'Failed to load sprints. Check your Project Key.'
+      );
+    } finally {
+      setLoadingSprints(false);
     }
   };
 
@@ -82,7 +120,7 @@ function Home() {
     }
 
     if (!formData.sprint_name) {
-      setError('Please enter Sprint Name');
+      setError('Please select Sprint Name');
       return;
     }
 
@@ -143,6 +181,7 @@ function Home() {
       setImportedIssues([]);
       setImportStats(null);
       setConnectionTest(null);
+      setSprints([]);
       loadSessions();
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -177,6 +216,7 @@ function Home() {
     setImportStats(null);
     setError(null);
     setConnectionTest(null);
+    setSprints([]);
   };
 
   if (loading) {
@@ -282,25 +322,48 @@ function Home() {
 
             {formData.import_from_jira && (
               <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                <TextField
-                  label="Jira Project Key"
+                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                  <TextField
+                    label="Jira Project Key"
+                    value={formData.project_key}
+                    onChange={(e) => {
+                      setFormData({ ...formData, project_key: e.target.value });
+                      setSprints([]);
+                    }}
+                    disabled={importLoading || loadingSprints}
+                    helperText="e.g., DEVOPS"
+                    sx={{ flex: 1 }}
+                  />
+                  <Button
+                    variant="outlined"
+                    startIcon={loadingSprints ? <CircularProgress size={20} /> : <GetAppIcon />}
+                    onClick={handleLoadSprints}
+                    disabled={loadingSprints || !formData.project_key}
+                    sx={{ mt: 1, minWidth: 120 }}
+                  >
+                    {loadingSprints ? 'Loading...' : 'Load Sprints'}
+                  </Button>
+                </Box>
+
+                <Autocomplete
+                  options={sprints}
+                  getOptionLabel={(option) => option.label}
+                  value={
+                    sprints.find((s) => s.name === formData.sprint_name) || null
+                  }
+                  onChange={(e, value) => {
+                    setFormData({ ...formData, sprint_name: value?.name || '' });
+                  }}
+                  disabled={importLoading || sprints.length === 0}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Sprint Name"
+                      placeholder="Select or type sprint name"
+                      helperText="Click 'Load Sprints' first"
+                    />
+                  )}
                   fullWidth
-                  margin="normal"
-                  placeholder="e.g., PROJ"
-                  value={formData.project_key}
-                  onChange={(e) => setFormData({ ...formData, project_key: e.target.value })}
-                  disabled={importLoading}
-                  helperText="Example: PROJ, ABC, etc."
-                />
-                <TextField
-                  label="Sprint Name"
-                  fullWidth
-                  margin="normal"
-                  placeholder="e.g., Sprint 1, Q1 2025"
-                  value={formData.sprint_name}
-                  onChange={(e) => setFormData({ ...formData, sprint_name: e.target.value })}
-                  disabled={importLoading}
-                  helperText="The exact sprint name from Jira"
                 />
 
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
@@ -309,7 +372,7 @@ function Home() {
                     variant="outlined"
                     startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
                     onClick={handleImportFromJira}
-                    disabled={importLoading}
+                    disabled={importLoading || !formData.sprint_name}
                   >
                     {importLoading ? 'Importing...' : 'Import Issues'}
                   </Button>
