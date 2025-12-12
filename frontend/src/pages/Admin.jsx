@@ -36,6 +36,7 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
+import SecurityIcon from '@mui/icons-material/Security';
 import { api } from '../services/api';
 
 function Admin() {
@@ -79,6 +80,12 @@ function Admin() {
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
+
+  // Change Role Dialog State
+  const [roleDialog, setRoleDialog] = useState(false);
+  const [userToChangeRole, setUserToChangeRole] = useState(null);
+  const [roleLoading, setRoleLoading] = useState(false);
+  const [roleError, setRoleError] = useState(null);
 
   useEffect(() => {
     checkAdminAccess();
@@ -353,6 +360,55 @@ function Admin() {
     }
   };
 
+  // Change Role Handlers
+  const handleOpenRoleDialog = (user) => {
+    if (!checkPermission()) return;
+
+    if (currentUser && user.id === currentUser.id) {
+      setPermissionError('You cannot change your own role to prevent self-lockout.');
+      setTimeout(() => setPermissionError(null), 5000);
+      return;
+    }
+
+    setUserToChangeRole(user);
+    setRoleError(null);
+    setRoleDialog(true);
+  };
+
+  const handleCloseRoleDialog = () => {
+    setRoleDialog(false);
+    setUserToChangeRole(null);
+  };
+
+  const handleChangeRole = async () => {
+    if (!checkPermission()) return;
+
+    setRoleError(null);
+    setRoleLoading(true);
+
+    try {
+      await api.put(`/users/${userToChangeRole.id}`, {
+        is_admin: !userToChangeRole.is_admin,
+      });
+
+      const newRole = !userToChangeRole.is_admin ? 'Admin' : 'User';
+      setAddUserMessage(`✅ ${userToChangeRole.email} role changed to ${newRole} successfully`);
+      setTimeout(() => {
+        handleCloseRoleDialog();
+        loadAdminData();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to change user role:', err);
+      if (err.response?.status === 403) {
+        setRoleError('Permission denied. Admin rights required.');
+      } else {
+        setRoleError(err.response?.data?.detail || 'Failed to change user role');
+      }
+    } finally {
+      setRoleLoading(false);
+    }
+  };
+
   const filteredIssues = showOnlyPending
     ? issues.filter((issue) => !issue.is_estimated)
     : issues;
@@ -621,19 +677,61 @@ function Admin() {
                         </TableCell>
                         <TableCell>{user.full_name}</TableCell>
                         <TableCell align="center">
-                          {user.is_admin ? (
-                            <Chip
-                              label="Admin"
-                              color="primary"
-                              size="small"
-                            />
-                          ) : (
-                            <Chip
-                              label="User"
-                              variant="outlined"
-                              size="small"
-                            />
-                          )}
+                          <Tooltip
+                            title={
+                              isCurrentUser
+                                ? 'You cannot change your own role'
+                                : isAdmin
+                                ? 'Click to change role'
+                                : 'Admin rights required'
+                            }
+                          >
+                            <Box
+                              onClick={() =>
+                                !isCurrentUser && handleOpenRoleDialog(user)
+                              }
+                              sx={{ display: 'inline-block' }}
+                            >
+                              {user.is_admin ? (
+                                <Chip
+                                  label="Admin"
+                                  color="primary"
+                                  size="small"
+                                  icon={<SecurityIcon />}
+                                  onClick={() =>
+                                    !isCurrentUser &&
+                                    handleOpenRoleDialog(user)
+                                  }
+                                  sx={{
+                                    cursor: isCurrentUser
+                                      ? 'not-allowed'
+                                      : isAdmin
+                                      ? 'pointer'
+                                      : 'not-allowed',
+                                    opacity: isCurrentUser ? 0.5 : 1,
+                                  }}
+                                />
+                              ) : (
+                                <Chip
+                                  label="User"
+                                  variant="outlined"
+                                  size="small"
+                                  onClick={() =>
+                                    !isCurrentUser &&
+                                    handleOpenRoleDialog(user)
+                                  }
+                                  sx={{
+                                    cursor: isCurrentUser
+                                      ? 'not-allowed'
+                                      : isAdmin
+                                      ? 'pointer'
+                                      : 'not-allowed',
+                                    opacity: isCurrentUser ? 0.5 : 1,
+                                  }}
+                                />
+                              )}
+                            </Box>
+                          </Tooltip>
                         </TableCell>
                         <TableCell align="center">
                           <Tooltip
@@ -1038,6 +1136,54 @@ function Admin() {
             }
           >
             {deleteLoading ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Change Role Dialog */}
+      <Dialog
+        open={roleDialog}
+        onClose={handleCloseRoleDialog}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>🔐 Change User Role</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {roleError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {roleError}
+            </Alert>
+          )}
+          <Typography>
+            Are you sure you want to change{' '}
+            <strong>{userToChangeRole?.email}</strong> role from{' '}
+            <strong>{userToChangeRole?.is_admin ? 'Admin' : 'User'}</strong> to{' '}
+            <strong>{userToChangeRole?.is_admin ? 'User' : 'Admin'}</strong>?
+          </Typography>
+          <Typography
+            variant="caption"
+            color="textSecondary"
+            sx={{ display: 'block', mt: 2 }}
+          >
+            {userToChangeRole?.is_admin
+              ? 'This user will lose admin privileges.'
+              : 'This user will gain admin privileges.'}
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseRoleDialog} disabled={roleLoading}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleChangeRole}
+            variant="contained"
+            disabled={roleLoading}
+            color={userToChangeRole?.is_admin ? 'error' : 'primary'}
+            startIcon={
+              roleLoading ? <CircularProgress size={20} /> : <SecurityIcon />
+            }
+          >
+            {roleLoading ? 'Changing...' : 'Change Role'}
           </Button>
         </DialogActions>
       </Dialog>
