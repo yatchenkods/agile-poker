@@ -17,18 +17,23 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
 import ErrorIcon from '@mui/icons-material/Error';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 import { api } from '../services/api';
 
 function Home() {
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -46,19 +51,65 @@ function Home() {
   const [failedIssues, setFailedIssues] = useState([]);
 
   useEffect(() => {
-    loadSessions();
+    // Load current user and sessions
+    Promise.all([loadSessions(), loadCurrentUser()]);
+
+    // Set up window focus listener for auto-refresh
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   }, []);
 
-  const loadSessions = async () => {
+  const handleWindowFocus = () => {
+    // Refresh sessions when user returns to the window
+    loadSessions(true);
+  };
+
+  const loadCurrentUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setCurrentUser(res.data);
+    } catch (err) {
+      console.error('Failed to load current user:', err);
+    }
+  };
+
+  const loadSessions = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    
     try {
       const res = await api.get('/sessions/');
-      setSessions(res.data);
+      setAllSessions(res.data);
     } catch (err) {
       console.error('Failed to load sessions:', err);
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
+
+  // Filter sessions based on user role
+  const getVisibleSessions = () => {
+    // Admins see all sessions
+    if (currentUser?.is_admin) {
+      return allSessions;
+    }
+
+    // Regular users see only sessions where they are in the estimators list
+    return allSessions.filter((session) => {
+      return session.estimators?.some((estimator) => estimator.id === currentUser?.id);
+    });
+  };
+
+  const sessions = getVisibleSessions();
 
   // Parse issue keys from text input (handles spaces, commas, newlines)
   const parseIssueKeys = (text) => {
@@ -202,8 +253,14 @@ function Home() {
   };
 
   if (loading) {
-    return <Typography>Loading sessions...</Typography>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
+
+  const isAdmin = currentUser?.is_admin;
 
   return (
     <Box>
@@ -216,10 +273,46 @@ function Home() {
         }}
       >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
-          New Session
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Tooltip title="Refresh sessions">
+            <IconButton
+              onClick={() => loadSessions(true)}
+              disabled={refreshing}
+              size="small"
+            >
+              {refreshing ? (
+                <CircularProgress size={24} />
+              ) : (
+                <RefreshIcon />
+              )}
+            </IconButton>
+          </Tooltip>
+          {isAdmin && (
+            <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
+              New Session
+            </Button>
+          )}
+        </Box>
       </Box>
+
+      {!isAdmin && sessions.length === 0 && allSessions.length > 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Box>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              ℹ️ You are not listed as an estimator in any sessions.
+            </Typography>
+            <Typography variant="caption" color="inherit">
+              Please contact an administrator to add you to a session. Try refreshing the page if you were recently added.
+            </Typography>
+          </Box>
+        </Alert>
+      )}
+
+      {sessions.length === 0 && (
+        <Typography variant="body1" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+          {isAdmin ? 'No sessions available. Create one to get started!' : 'No sessions to display.'}
+        </Typography>
+      )}
 
       <Grid container spacing={2}>
         {sessions.map((session) => (
