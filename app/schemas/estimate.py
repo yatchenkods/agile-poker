@@ -1,7 +1,7 @@
 """Estimate schemas"""
 
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class EstimateCreate(BaseModel):
@@ -13,22 +13,19 @@ class EstimateCreate(BaseModel):
     user_id: int
     is_joker: bool = Field(default=False, description="True if user selected Joker (J) card")
 
-    @field_validator('story_points')
-    @classmethod
-    def validate_story_points(cls, v, info):
+    @model_validator(mode='after')
+    def validate_story_points(self):
         """Validate that story_points is valid based on is_joker flag"""
-        is_joker = info.data.get('is_joker', False)
-        
-        if is_joker:
+        if self.is_joker:
             # For Joker, story_points must be 0
-            if v != 0:
+            if self.story_points != 0:
                 raise ValueError('story_points must be 0 when is_joker is True')
         else:
             # For normal estimates, story_points must be >= 1
-            if v < 1:
+            if self.story_points < 1:
                 raise ValueError('story_points must be greater than or equal to 1')
         
-        return v
+        return self
 
     class Config:
         json_schema_extra = {
