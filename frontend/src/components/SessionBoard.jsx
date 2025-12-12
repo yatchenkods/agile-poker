@@ -100,6 +100,9 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
     );
   }
 
+  // Header height for offset calculation
+  const headerHeight = '56px'; // h6 variant height with padding
+
   return (
     <Grid container spacing={2} sx={{ height: 'auto', minHeight: 'calc(100vh - 300px)' }}>
       {/* Issues List - Left Side */}
@@ -264,8 +267,9 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
           flexDirection: 'column',
           minHeight: 0,
           position: 'sticky',
-          top: 0,
+          top: headerHeight, // Offset by header height so it doesn't overlap
           height: 'fit-content',
+          alignSelf: 'flex-start',
         }}
       >
         {selectedIssue ? (
