@@ -33,12 +33,20 @@ class ImportIssuesRequest(BaseModel):
         }
 
 
+class FailedIssue(BaseModel):
+    """Failed import issue info"""
+    key: str
+    reason: str
+    details: str = ""
+
+
 class ImportIssuesResponse(BaseModel):
     """Response for importing issues"""
     status: str
     imported_count: int
     failed_count: int
     message: str
+    failed_issues: List[FailedIssue] = []
 
 
 @router.post("/", response_model=SessionResponse)
@@ -149,7 +157,7 @@ async def import_issues_to_session(
         issue_keys: List of Jira issue keys (e.g., ['DEVOPS-123'])
 
     Returns:
-        Status of import with counts
+        Status of import with counts and detailed error info
     """
     # Verify session exists and user is creator
     session = session_service.get_session(db, session_id)
@@ -169,8 +177,11 @@ async def import_issues_to_session(
             detail="At least one issue key is required",
         )
 
+    logger.info(f"Import request for session {session_id}: {request.issue_keys}")
+
     # Check Jira connection
     if not jira_service.validate_connection():
+        logger.error("Jira connection validation failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Cannot connect to Jira. Please check configuration.",
@@ -180,57 +191,115 @@ async def import_issues_to_session(
         logger.info(f"Importing {len(request.issue_keys)} issues to session {session_id}")
         
         # Fetch issues from Jira
+        logger.debug(f"Calling jira_service.get_issues_by_keys with keys: {request.issue_keys}")
         successful_issues, failed_issues = jira_service.get_issues_by_keys(request.issue_keys)
+        
+        logger.info(
+            f"JiraService returned {len(successful_issues)} successful, "
+            f"{len(failed_issues)} failed issues"
+        )
         
         # Add successful issues to session
         from app.models.issue import Issue
         
         imported_count = 0
+        processed_keys = set()
+        
         for jira_issue in successful_issues:
             try:
-                # Check if issue already exists
-                existing_issue = issue_service.get_issue_by_jira_key(db, jira_issue["key"])
+                issue_key = jira_issue.get("key", "").upper().strip()
                 
-                if existing_issue and existing_issue.session_id == session_id:
-                    logger.debug(f"Issue {jira_issue['key']} already in session")
+                if not issue_key:
+                    logger.warning(f"Issue has no key: {jira_issue}")
+                    failed_issues.append({
+                        "key": "UNKNOWN",
+                        "reason": "Missing issue key",
+                        "details": "The fetched issue has no key field"
+                    })
+                    continue
+                
+                if issue_key in processed_keys:
+                    logger.debug(f"Issue {issue_key} already processed in this import")
+                    continue
+                    
+                processed_keys.add(issue_key)
+                
+                # Check if issue already exists in this session
+                existing_issue = db.query(Issue).filter(
+                    Issue.session_id == session_id,
+                    Issue.jira_key == issue_key
+                ).first()
+                
+                if existing_issue:
+                    logger.debug(f"Issue {issue_key} already exists in session {session_id}")
                     imported_count += 1
+                    continue
+                
+                # Validate issue data
+                title = jira_issue.get("title", "").strip()
+                if not title:
+                    logger.warning(f"Issue {issue_key} has no title")
+                    failed_issues.append({
+                        "key": issue_key,
+                        "reason": "Missing issue title",
+                        "details": "The issue has no summary/title"
+                    })
                     continue
                 
                 # Create new issue
                 new_issue = Issue(
                     session_id=session_id,
-                    jira_key=jira_issue["key"],
-                    title=jira_issue["title"],
+                    jira_key=issue_key,
+                    title=title,
                     description=jira_issue.get("description", ""),
                     issue_type=jira_issue.get("issue_type", ""),
                 )
                 db.add(new_issue)
                 db.flush()
                 imported_count += 1
-                logger.debug(f"Added issue {jira_issue['key']} to session")
+                logger.info(f"Added issue {issue_key} (ID: {new_issue.id}) to session {session_id}")
+                
             except Exception as e:
-                logger.error(f"Error adding issue {jira_issue['key']}: {e}")
+                logger.error(
+                    f"Error adding issue {jira_issue.get('key', 'UNKNOWN')}: {e}",
+                    exc_info=True
+                )
+                failed_issues.append({
+                    "key": jira_issue.get("key", "UNKNOWN"),
+                    "reason": "Database error",
+                    "details": str(e)[:100]
+                })
                 continue
         
         db.commit()
-        
         logger.info(
-            f"Successfully imported {imported_count} issues to session {session_id}, "
+            f"Successfully imported {imported_count} issue(s) to session {session_id}, "
             f"{len(failed_issues)} failed"
         )
         
+        # Build failed issues response
+        failed_issues_response = [
+            FailedIssue(
+                key=issue["key"],
+                reason=issue.get("reason", "Unknown error"),
+                details=issue.get("details", "")
+            )
+            for issue in failed_issues
+        ]
+        
         return ImportIssuesResponse(
-            status="success" if imported_count > 0 else "error",
+            status="success" if imported_count > 0 else "partial" if len(failed_issues) > 0 else "error",
             imported_count=imported_count,
             failed_count=len(failed_issues),
             message=f"Imported {imported_count} issue(s)" + 
                    (f" ({len(failed_issues)} failed)" if failed_issues else ""),
+            failed_issues=failed_issues_response
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error importing issues to session: {e}", exc_info=True)
+        logger.error(f"Error importing issues to session {session_id}: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
