@@ -7,18 +7,22 @@ import {
   Typography,
   Chip,
   CircularProgress,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import EstimationCard from './EstimationCard';
 import { api } from '../services/api';
 
-function SessionBoard({ session, issues }) {
+function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null }) {
   const [selectedIssue, setSelectedIssue] = useState(issues[0] || null);
   const [estimates, setEstimates] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
   const [loadingEstimates, setLoadingEstimates] = useState(true);
+  const [hoveredIssueId, setHoveredIssueId] = useState(null);
 
   // Fetch current user and all estimates
   useEffect(() => {
@@ -54,6 +58,15 @@ function SessionBoard({ session, issues }) {
       fetchData();
     }
   }, [session.id]);
+
+  // Update selected issue when issues change
+  useEffect(() => {
+    if (issues.length > 0 && (!selectedIssue || !issues.find(i => i.id === selectedIssue.id))) {
+      setSelectedIssue(issues[0]);
+    } else if (issues.length === 0) {
+      setSelectedIssue(null);
+    }
+  }, [issues]);
 
   const handleEstimateSubmitted = (issueId, points) => {
     // Update local state with new estimate
@@ -94,69 +107,97 @@ function SessionBoard({ session, issues }) {
         <Typography variant="h6" gutterBottom>
           📋 Issues ({issues.length})
         </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '75vh', overflowY: 'auto' }}>
-          {issues.map((issue) => {
-            const status = getIssueEstimateStatus(issue);
+        {issues.length === 0 ? (
+          <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, textAlign: 'center' }}>
+            <Typography color="textSecondary">No issues in this session yet.</Typography>
+            <Typography variant="caption" color="textSecondary">Click "Add Issues" to import tasks.</Typography>
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '75vh', overflowY: 'auto' }}>
+            {issues.map((issue) => {
+              const status = getIssueEstimateStatus(issue);
+              const isHovered = hoveredIssueId === issue.id;
 
-            return (
-              <Card
-                key={issue.id}
-                onClick={() => setSelectedIssue(issue)}
-                sx={{
-                  cursor: 'pointer',
-                  backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : 'inherit',
-                  '&:hover': { boxShadow: 2 },
-                  transition: 'all 0.2s',
-                  border: status.isFinal ? '2px solid #4caf50' : 'none',
-                }}
-              >
-                <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="body2" noWrap sx={{ fontWeight: 'bold' }}>
-                        {issue.jira_key}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary" noWrap>
-                        {issue.title}
-                      </Typography>
-                    </Box>
-
-                    {/* Estimate Badge */}
-                    <Box sx={{ display: 'flex', gap: 0.5, flexDirection: 'column', alignItems: 'flex-end', minWidth: 'fit-content' }}>
-                      {status.isFinal ? (
-                        <Chip
-                          label={`${status.finalPoints}`}
-                          size="small"
-                          color="success"
-                          variant="filled"
-                          icon={<CheckCircleIcon />}
-                          sx={{ fontWeight: 'bold' }}
-                        />
-                      ) : status.hasUserEstimate ? (
-                        <Chip
-                          label={`${status.userEstimate}`}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                          icon={<PendingIcon />}
-                        />
-                      ) : (
-                        <Chip label="—" size="small" variant="outlined" />
-                      )}
-
-                      {/* Show total estimates count */}
-                      {status.totalEstimates > 0 && (
-                        <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.65rem' }}>
-                          {status.totalEstimates} vote{status.totalEstimates !== 1 ? 's' : ''}
+              return (
+                <Card
+                  key={issue.id}
+                  onClick={() => setSelectedIssue(issue)}
+                  onMouseEnter={() => setHoveredIssueId(issue.id)}
+                  onMouseLeave={() => setHoveredIssueId(null)}
+                  sx={{
+                    cursor: 'pointer',
+                    backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : 'inherit',
+                    '&:hover': { boxShadow: 2 },
+                    transition: 'all 0.2s',
+                    border: status.isFinal ? '2px solid #4caf50' : 'none',
+                  }}
+                >
+                  <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 'bold' }}>
+                          {issue.jira_key}
                         </Typography>
-                      )}
+                        <Typography variant="caption" color="textSecondary" noWrap>
+                          {issue.title}
+                        </Typography>
+                      </Box>
+
+                      {/* Estimate Badge and Delete Button */}
+                      <Box sx={{ display: 'flex', gap: 0.5, flexDirection: 'column', alignItems: 'flex-end', minWidth: 'fit-content' }}>
+                        {isCreator && isHovered && (
+                          <Tooltip title="Remove issue">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onDeleteIssue) {
+                                  onDeleteIssue(issue.id);
+                                }
+                              }}
+                              sx={{ p: 0.5 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {status.isFinal ? (
+                          <Chip
+                            label={`${status.finalPoints}`}
+                            size="small"
+                            color="success"
+                            variant="filled"
+                            icon={<CheckCircleIcon />}
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        ) : status.hasUserEstimate ? (
+                          <Chip
+                            label={`${status.userEstimate}`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            icon={<PendingIcon />}
+                          />
+                        ) : (
+                          <Chip label="—" size="small" variant="outlined" />
+                        )}
+
+                        {/* Show total estimates count */}
+                        {status.totalEstimates > 0 && (
+                          <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.65rem' }}>
+                            {status.totalEstimates} vote{status.totalEstimates !== 1 ? 's' : ''}
+                          </Typography>
+                        )}
+                      </Box>
                     </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </Box>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+        )}
       </Grid>
 
       {/* Estimation Area - Right Side */}
