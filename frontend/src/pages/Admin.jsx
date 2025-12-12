@@ -387,7 +387,7 @@ function Admin() {
     setRoleLoading(true);
 
     try {
-      await api.put(`/users/${userToChangeRole.id}`, {
+      await api.put(`/admin/users/${userToChangeRole.id}/role`, {
         is_admin: !userToChangeRole.is_admin,
       });
 
@@ -401,6 +401,8 @@ function Admin() {
       console.error('Failed to change user role:', err);
       if (err.response?.status === 403) {
         setRoleError('Permission denied. Admin rights required.');
+      } else if (err.response?.status === 404) {
+        setRoleError('User not found.');
       } else {
         setRoleError(err.response?.data?.detail || 'Failed to change user role');
       }
