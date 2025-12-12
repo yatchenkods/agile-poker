@@ -49,9 +49,10 @@ JIRA_API_TOKEN=your-generated-api-token
 1. Start the application
 2. Go to "New Session" dialog
 3. Check the "Import issues from Jira sprint" checkbox
-4. Enter your Project Key (e.g., "PROJ")
-5. Enter your Sprint Name (e.g., "Sprint 1")
-6. Click "Import Issues"
+4. Click "Test" button to verify connection
+5. If successful, enter your Project Key (e.g., "PROJ")
+6. Enter your Sprint Name (e.g., "Sprint 1")
+7. Click "Import Issues"
 
 If configured correctly, you should see a list of issues from your sprint.
 
@@ -70,12 +71,13 @@ If configured correctly, you should see a list of issues from your sprint.
 2. Check JIRA_USERNAME is correct (email for Cloud, username for Server)
 3. Verify JIRA_API_TOKEN is correct and hasn't expired
 4. Ensure your Jira user has API access enabled
+5. Use the "Test" button in the UI to diagnose the issue
 
 ### Error: "No issues found in sprint"
 
 **Causes:**
 - Project Key is incorrect
-- Sprint Name doesn't match exactly (case-sensitive)
+- Sprint Name doesn't match exactly (case-insensitive but must be exact)
 - Sprint exists but has no issues
 
 **Solutions:**
@@ -112,6 +114,24 @@ Alternatively:
 3. The sprint name is displayed (e.g., "Sprint 1", "Q1 2025 Sprint")
 
 ## API Endpoints
+
+### Test Connection
+
+```
+GET /api/v1/jira/test-connection
+
+Response:
+{
+  "status": "success",
+  "message": "Successfully connected to Jira!",
+  "configured": true,
+  "connected": true,
+  "details": {
+    "jira_url": "https://your-domain.atlassian.net",
+    "jira_username": "your-email@example.com"
+  }
+}
+```
 
 ### Import Sprint Issues
 
@@ -171,11 +191,12 @@ To improve performance with frequent imports:
 For issues or questions:
 1. Check this guide first
 2. Review application logs for error details
-3. Verify Jira credentials and permissions
-4. Test Jira API access manually using curl:
+3. Use the "Test" button in the UI to diagnose connection issues
+4. Verify Jira credentials and permissions
+5. Test Jira API access manually using curl:
 
 ```bash
-curl -u "your-email@example.com:your-api-token" \\
+curl -u "your-email@example.com:your-api-token" \
   https://your-jira-instance.atlassian.net/rest/api/2/myself
 ```
 
