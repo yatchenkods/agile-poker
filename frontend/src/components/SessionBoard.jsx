@@ -101,19 +101,57 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
   }
 
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={2} sx={{ height: 'auto', minHeight: 'calc(100vh - 300px)' }}>
       {/* Issues List - Left Side */}
-      <Grid item xs={12} md={4}>
-        <Typography variant="h6" gutterBottom>
+      <Grid 
+        item 
+        xs={12} 
+        md={4} 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: 0
+        }}
+      >
+        <Typography variant="h6" gutterBottom sx={{ mb: 1.5 }}>
           📋 Issues ({issues.length})
         </Typography>
+        
         {issues.length === 0 ? (
           <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, textAlign: 'center' }}>
             <Typography color="textSecondary">No issues in this session yet.</Typography>
             <Typography variant="caption" color="textSecondary">Click "Add Issues" to import tasks.</Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '75vh', overflowY: 'auto' }}>
+          /* Scrollable Issues Container */
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              pr: 0.5, // Right padding for scrollbar
+              pr: '8px',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: '#f1f1f1',
+                borderRadius: '4px',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: '#bdbdbd',
+                borderRadius: '4px',
+                transition: 'background-color 0.2s',
+                '&:hover': {
+                  backgroundColor: '#9e9e9e',
+                },
+              },
+            }}
+          >
             {issues.map((issue) => {
               const status = getIssueEstimateStatus(issue);
               const isHovered = hoveredIssueId === issue.id;
@@ -127,18 +165,22 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
                   sx={{
                     cursor: 'pointer',
                     backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : 'inherit',
-                    '&:hover': { boxShadow: 2 },
+                    '&:hover': { 
+                      boxShadow: 2,
+                      backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : '#fafafa',
+                    },
                     transition: 'all 0.2s',
-                    border: status.isFinal ? '2px solid #4caf50' : 'none',
+                    border: status.isFinal ? '2px solid #4caf50' : '1px solid #e0e0e0',
+                    flexShrink: 0, // CRITICAL: Prevent card from shrinking
                   }}
                 >
-                  <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
+                  <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
                       <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography variant="body2" noWrap sx={{ fontWeight: 'bold' }}>
                           {issue.jira_key}
                         </Typography>
-                        <Typography variant="caption" color="textSecondary" noWrap>
+                        <Typography variant="caption" color="textSecondary" noWrap sx={{ display: 'block' }}>
                           {issue.title}
                         </Typography>
                       </Box>
@@ -201,13 +243,24 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
       </Grid>
 
       {/* Estimation Area - Right Side */}
-      <Grid item xs={12} md={8}>
+      <Grid 
+        item 
+        xs={12} 
+        md={8}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0
+        }}
+      >
         {selectedIssue ? (
-          <EstimationCard
-            issue={selectedIssue}
-            session={session}
-            onEstimateSubmitted={handleEstimateSubmitted}
-          />
+          <Box sx={{ flex: 1, overflowY: 'auto', pr: 1 }}>
+            <EstimationCard
+              issue={selectedIssue}
+              session={session}
+              onEstimateSubmitted={handleEstimateSubmitted}
+            />
+          </Box>
         ) : (
           <Typography color="textSecondary">Select an issue to start estimating</Typography>
         )}
