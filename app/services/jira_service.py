@@ -282,16 +282,21 @@ class JiraService:
                     "status_code": 200
                 }
 
+            # Build Jira URL for the issue
+            jira_url = f"{self.jira_url}/browse/{key}"
+
             issue_obj = {
                 "key": key,
                 "title": title,
                 "description": issue_data.get("fields", {}).get("description") or "",
+                "jira_url": jira_url,
             }
             
             logger.debug(
-                "Parsed issue: %s - %s",
+                "Parsed issue: %s - %s (URL: %s)",
                 issue_obj["key"],
-                issue_obj["title"]
+                issue_obj["title"],
+                jira_url
             )
             
             return {
