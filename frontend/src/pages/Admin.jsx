@@ -122,12 +122,18 @@ function Admin() {
       setLoading(true);
       setError(null);
 
-      const [statsRes, usersRes, issuesRes, estimationRes, sessionsRes] = await Promise.all([
+      // Load sessions FIRST
+      const sessionsRes = await api.get('/sessions/?limit=1000');
+      const sessionsData = sessionsRes.data && Array.isArray(sessionsRes.data) ? sessionsRes.data : [];
+      setSessions(sessionsData);
+      console.log('Loaded sessions:', sessionsData);
+
+      // Then load other data in parallel
+      const [statsRes, usersRes, issuesRes, estimationRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/users-stats'),
         api.get('/issues/'),
         api.get('/admin/conflicting-estimates'),
-        api.get('/sessions/?limit=1000'),
       ]);
 
       setStats(statsRes.data);
@@ -147,12 +153,8 @@ function Admin() {
 
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
-        // Load estimates for each issue
-        await loadIssueEstimates(issuesRes.data);
-      }
-
-      if (sessionsRes.data && Array.isArray(sessionsRes.data)) {
-        setSessions(sessionsRes.data);
+        // Load estimates using the sessions data we already loaded
+        await loadIssueEstimates(issuesRes.data, sessionsData);
       }
 
       setEstimationStats(estimationRes.data || []);
@@ -164,7 +166,7 @@ function Admin() {
     }
   };
 
-  const loadIssueEstimates = async (issuesList) => {
+  const loadIssueEstimates = async (issuesList, sessionsData) => {
     try {
       const estimatesMap = {};
       const sessionEstimatorsMap = {};
@@ -176,12 +178,15 @@ function Admin() {
             params: { issue_id: issue.id },
           });
           estimatesMap[issue.id] = estimatesRes.data || [];
+          console.log(`Estimates for issue ${issue.id}:`, estimatesRes.data);
 
           // Find the session for this issue and get its estimators
-          const issueSession = sessions.find(s => s.id === issue.session_id);
+          const issueSession = sessionsData.find(s => s.id === issue.session_id);
           if (issueSession && issueSession.estimators) {
             sessionEstimatorsMap[issue.id] = issueSession.estimators;
+            console.log(`Session estimators for issue ${issue.id}:`, issueSession.estimators);
           } else {
+            console.log(`No session found for issue ${issue.id} (session_id: ${issue.session_id})`);
             sessionEstimatorsMap[issue.id] = [];
           }
         } catch (err) {
@@ -191,6 +196,7 @@ function Admin() {
         }
       }
       
+      console.log('Final sessionEstimatorsMap:', sessionEstimatorsMap);
       setIssueEstimates(estimatesMap);
       setIssueSessionEstimators(sessionEstimatorsMap);
     } catch (err) {
