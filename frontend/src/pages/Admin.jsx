@@ -22,17 +22,24 @@ import {
   CircularProgress,
   Chip,
   IconButton,
+  ButtonGroup,
+  Divider,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import BarChartIcon from '@mui/icons-material/BarChart';
+import PeopleIcon from '@mui/icons-material/People';
+import EventIcon from '@mui/icons-material/Event';
 import { api } from '../services/api';
 
 function Admin() {
+  const [activeTab, setActiveTab] = useState('stats'); // 'stats', 'users', 'sessions'
   const [stats, setStats] = useState(null);
   const [conflicts, setConflicts] = useState([]);
   const [usersStats, setUsersStats] = useState([]);
   const [users, setUsers] = useState([]);
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [resetDialog, setResetDialog] = useState(false);
@@ -89,6 +96,12 @@ function Admin() {
         console.log('Users response is not an array or empty');
         setUsers([]);
       }
+
+      // Fetch sessions
+      console.log('Fetching sessions...');
+      const sessionsRes = await api.get('/sessions/');
+      console.log('Sessions response:', sessionsRes.data);
+      setSessions(sessionsRes.data || []);
     } catch (err) {
       console.error('Failed to load admin data:', err);
       console.error('Error response:', err.response);
@@ -164,9 +177,12 @@ function Admin() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        🛠️ Admin Dashboard
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4">🛠️ Admin Dashboard</Typography>
+        <IconButton onClick={loadAdminData} size="small" title="Refresh">
+          <RefreshIcon />
+        </IconButton>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -174,148 +190,237 @@ function Admin() {
         </Alert>
       )}
 
-      {/* Statistics */}
-      {stats && (
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Users
-                </Typography>
-                <Typography variant="h5">{stats.total_users}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Sessions
-                </Typography>
-                <Typography variant="h5">{stats.total_sessions}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Issues
-                </Typography>
-                <Typography variant="h5">{stats.total_issues}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card>
-              <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Estimates
-                </Typography>
-                <Typography variant="h5">{stats.total_estimates}</Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      )}
+      {/* Tab Navigation */}
+      <Box sx={{ mb: 3 }}>
+        <ButtonGroup variant="outlined" size="large">
+          <Button
+            startIcon={<BarChartIcon />}
+            onClick={() => setActiveTab('stats')}
+            variant={activeTab === 'stats' ? 'contained' : 'outlined'}
+            sx={activeTab === 'stats' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
+          >
+            Statistics
+          </Button>
+          <Button
+            startIcon={<PeopleIcon />}
+            onClick={() => setActiveTab('users')}
+            variant={activeTab === 'users' ? 'contained' : 'outlined'}
+            sx={activeTab === 'users' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
+          >
+            Users
+          </Button>
+          <Button
+            startIcon={<EventIcon />}
+            onClick={() => setActiveTab('sessions')}
+            variant={activeTab === 'sessions' ? 'contained' : 'outlined'}
+            sx={activeTab === 'sessions' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
+          >
+            Sessions
+          </Button>
+        </ButtonGroup>
+      </Box>
 
-      {/* User Management */}
-      {users && users.length > 0 ? (
-        <Box sx={{ mb: 4 }}>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">👥 User Management ({users.length})</Typography>
-            <IconButton onClick={loadAdminData} size="small" title="Refresh">
-              <RefreshIcon />
-            </IconButton>
-          </Box>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Full Name</TableCell>
-                  <TableCell align="center">Role</TableCell>
-                  <TableCell align="center">Status</TableCell>
-                  <TableCell align="right">Estimates</TableCell>
-                  <TableCell align="center">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.full_name}</TableCell>
-                    <TableCell align="center">
-                      {user.is_admin ? (
-                        <Chip label="Admin" color="primary" size="small" />
-                      ) : (
-                        <Chip label="User" variant="outlined" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell align="center">
-                      {user.is_active ? (
-                        <Chip label="Active" color="success" size="small" />
-                      ) : (
-                        <Chip label="Inactive" variant="outlined" size="small" />
-                      )}
-                    </TableCell>
-                    <TableCell align="right">{user.total_estimates}</TableCell>
-                    <TableCell align="center">
-                      <Button
-                        startIcon={<VpnKeyIcon />}
-                        size="small"
-                        variant="outlined"
-                        onClick={() => handleOpenResetDialog(user)}
-                      >
-                        Reset Password
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
-      ) : (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          No users found or still loading user data
-        </Alert>
-      )}
+      <Divider sx={{ mb: 3 }} />
 
-      {/* Conflicting Estimates */}
-      {conflicts.length > 0 && (
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="h6" gutterBottom>
-            <WarningIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-            Issues with Conflicting Estimates
+      {/* STATISTICS TAB */}
+      {activeTab === 'stats' && (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            📊 Overview Statistics
           </Typography>
-          <TableContainer component={Paper}>
-            <Table>
-              <TableHead>
-                <TableRow sx={{ backgroundColor: '#ffe0e0' }}>
-                  <TableCell>Jira Key</TableCell>
-                  <TableCell>Title</TableCell>
-                  <TableCell align="right">Min</TableCell>
-                  <TableCell align="right">Max</TableCell>
-                  <TableCell align="right">Variance</TableCell>
-                  <TableCell align="right">Votes</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {conflicts.map((conflict) => (
-                  <TableRow key={conflict.issue_id}>
-                    <TableCell>{conflict.jira_key}</TableCell>
-                    <TableCell>{conflict.title}</TableCell>
-                    <TableCell align="right">{conflict.min_points}</TableCell>
-                    <TableCell align="right">{conflict.max_points}</TableCell>
-                    <TableCell align="right">{conflict.variance}</TableCell>
-                    <TableCell align="right">{conflict.estimates_count}</TableCell>
+
+          {/* Stats Cards */}
+          {stats && (
+            <Grid container spacing={2} sx={{ mb: 4 }}>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Users
+                    </Typography>
+                    <Typography variant="h5">{stats.total_users}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Sessions
+                    </Typography>
+                    <Typography variant="h5">{stats.total_sessions}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Issues
+                    </Typography>
+                    <Typography variant="h5">{stats.total_issues}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+              <Grid item xs={12} sm={6} md={3}>
+                <Card>
+                  <CardContent>
+                    <Typography color="textSecondary" gutterBottom>
+                      Estimates
+                    </Typography>
+                    <Typography variant="h5">{stats.total_estimates}</Typography>
+                  </CardContent>
+                </Card>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Conflicting Estimates */}
+          {conflicts.length > 0 && (
+            <Box sx={{ mb: 4 }}>
+              <Typography variant="h6" gutterBottom>
+                <WarningIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
+                Issues with Conflicting Estimates ({conflicts.length})
+              </Typography>
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: '#ffe0e0' }}>
+                      <TableCell>Jira Key</TableCell>
+                      <TableCell>Title</TableCell>
+                      <TableCell align="right">Min</TableCell>
+                      <TableCell align="right">Max</TableCell>
+                      <TableCell align="right">Variance</TableCell>
+                      <TableCell align="right">Votes</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {conflicts.map((conflict) => (
+                      <TableRow key={conflict.issue_id}>
+                        <TableCell>{conflict.jira_key}</TableCell>
+                        <TableCell>{conflict.title}</TableCell>
+                        <TableCell align="right">{conflict.min_points}</TableCell>
+                        <TableCell align="right">{conflict.max_points}</TableCell>
+                        <TableCell align="right">{conflict.variance}</TableCell>
+                        <TableCell align="right">{conflict.estimates_count}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+        </Box>
+      )}
+
+      {/* USERS TAB */}
+      {activeTab === 'users' && (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            👥 User Management
+          </Typography>
+
+          {users && users.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell>Email</TableCell>
+                    <TableCell>Full Name</TableCell>
+                    <TableCell align="center">Role</TableCell>
+                    <TableCell align="center">Status</TableCell>
+                    <TableCell align="right">Estimates</TableCell>
+                    <TableCell align="center">Actions</TableCell>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{user.full_name}</TableCell>
+                      <TableCell align="center">
+                        {user.is_admin ? (
+                          <Chip label="Admin" color="primary" size="small" />
+                        ) : (
+                          <Chip label="User" variant="outlined" size="small" />
+                        )}
+                      </TableCell>
+                      <TableCell align="center">
+                        {user.is_active ? (
+                          <Chip label="Active" color="success" size="small" />
+                        ) : (
+                          <Chip label="Inactive" variant="outlined" size="small" />
+                        )}
+                      </TableCell>
+                      <TableCell align="right">{user.total_estimates}</TableCell>
+                      <TableCell align="center">
+                        <Button
+                          startIcon={<VpnKeyIcon />}
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleOpenResetDialog(user)}
+                        >
+                          Reset Password
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="info">No users found</Alert>
+          )}
+        </Box>
+      )}
+
+      {/* SESSIONS TAB */}
+      {activeTab === 'sessions' && (
+        <Box>
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            📅 Active Sessions
+          </Typography>
+
+          {sessions && sessions.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                    <TableCell>Session Name</TableCell>
+                    <TableCell>Created By</TableCell>
+                    <TableCell align="center">Issues</TableCell>
+                    <TableCell align="center">Status</TableCell>
+                    <TableCell>Created At</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {sessions.map((session) => (
+                    <TableRow key={session.id}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>{session.name}</TableCell>
+                      <TableCell>{session.created_by_name || 'Unknown'}</TableCell>
+                      <TableCell align="center">
+                        <Chip label={session.issues_count || 0} size="small" />
+                      </TableCell>
+                      <TableCell align="center">
+                        {session.is_active ? (
+                          <Chip label="Active" color="success" size="small" />
+                        ) : (
+                          <Chip label="Closed" variant="outlined" size="small" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {new Date(session.created_at).toLocaleDateString()} 
+                        {' '}
+                        {new Date(session.created_at).toLocaleTimeString()}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="info">No sessions found</Alert>
+          )}
         </Box>
       )}
 
