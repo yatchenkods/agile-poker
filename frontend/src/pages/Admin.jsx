@@ -26,6 +26,7 @@ import {
   Tab,
   FormControlLabel,
   Switch,
+  Tooltip,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -49,6 +50,7 @@ function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
+  const [permissionError, setPermissionError] = useState(null);
   
   // Reset password dialog
   const [resetDialog, setResetDialog] = useState(false);
@@ -137,8 +139,20 @@ function Admin() {
     }
   };
 
+  // Check permission and show error if not admin
+  const checkPermission = () => {
+    if (!isAdmin) {
+      setPermissionError('You do not have permission to perform this action. Admin rights required.');
+      setTimeout(() => setPermissionError(null), 5000);
+      return false;
+    }
+    return true;
+  };
+
   // RESET PASSWORD
   const handleOpenResetDialog = (user) => {
+    if (!checkPermission()) return;
+    
     setSelectedUser(user);
     setNewPassword('');
     setConfirmPassword('');
@@ -153,6 +167,8 @@ function Admin() {
   };
 
   const handleResetPassword = async () => {
+    if (!checkPermission()) return;
+    
     setResetError(null);
     setResetMessage(null);
 
@@ -186,7 +202,11 @@ function Admin() {
       }, 2000);
     } catch (err) {
       console.error('Failed to reset password:', err);
-      setResetError(err.response?.data?.detail || 'Failed to reset password');
+      if (err.response?.status === 403) {
+        setResetError('Permission denied. Admin rights required.');
+      } else {
+        setResetError(err.response?.data?.detail || 'Failed to reset password');
+      }
     } finally {
       setResetLoading(false);
     }
@@ -194,6 +214,8 @@ function Admin() {
 
   // ADD USER
   const handleOpenAddUserDialog = () => {
+    if (!checkPermission()) return;
+    
     setNewUserData({ email: '', full_name: '', password: '' });
     setAddUserError(null);
     setAddUserMessage(null);
@@ -206,6 +228,8 @@ function Admin() {
   };
 
   const handleAddUser = async () => {
+    if (!checkPermission()) return;
+    
     setAddUserError(null);
     setAddUserMessage(null);
 
@@ -227,7 +251,7 @@ function Admin() {
     setAddUserLoading(true);
 
     try {
-      const response = await api.post('/auth/register', {
+      await api.post('/auth/register', {
         email: newUserData.email,
         full_name: newUserData.full_name,
         password: newUserData.password,
@@ -240,7 +264,11 @@ function Admin() {
       }, 2000);
     } catch (err) {
       console.error('Failed to create user:', err);
-      setAddUserError(err.response?.data?.detail || 'Failed to create user');
+      if (err.response?.status === 403) {
+        setAddUserError('Permission denied. Admin rights required.');
+      } else {
+        setAddUserError(err.response?.data?.detail || 'Failed to create user');
+      }
     } finally {
       setAddUserLoading(false);
     }
@@ -248,6 +276,8 @@ function Admin() {
 
   // DELETE USER
   const handleOpenDeleteDialog = (user) => {
+    if (!checkPermission()) return;
+    
     setUserToDelete(user);
     setDeleteError(null);
     setDeleteDialog(true);
@@ -259,6 +289,8 @@ function Admin() {
   };
 
   const handleDeleteUser = async () => {
+    if (!checkPermission()) return;
+    
     setDeleteError(null);
     setDeleteLoading(true);
 
@@ -271,7 +303,11 @@ function Admin() {
       }, 2000);
     } catch (err) {
       console.error('Failed to delete user:', err);
-      setDeleteError(err.response?.data?.detail || 'Failed to delete user');
+      if (err.response?.status === 403) {
+        setDeleteError('Permission denied. Admin rights required.');
+      } else {
+        setDeleteError(err.response?.data?.detail || 'Failed to delete user');
+      }
     } finally {
       setDeleteLoading(false);
     }
@@ -279,6 +315,8 @@ function Admin() {
 
   // TOGGLE USER STATUS
   const handleToggleUserStatus = async (user) => {
+    if (!checkPermission()) return;
+    
     try {
       const updatedUsers = users.map(u => {
         if (u.id === user.id) {
@@ -288,13 +326,14 @@ function Admin() {
       });
       setUsers(updatedUsers);
 
-      // Make API call to update status
       await api.put(`/users/${user.id}`, {
         is_active: !user.is_active,
       });
     } catch (err) {
       console.error('Failed to update user status:', err);
-      // Revert on error
+      if (err.response?.status === 403) {
+        setPermissionError('Permission denied. Admin rights required.');
+      }
       loadAdminData();
     }
   };
@@ -342,6 +381,12 @@ function Admin() {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+
+      {permissionError && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {permissionError}
         </Alert>
       )}
 
@@ -460,13 +505,18 @@ function Admin() {
         <Box>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
             <Typography variant="h6">👥 User Management</Typography>
-            <Button
-              variant="contained"
-              startIcon={<AddIcon />}
-              onClick={handleOpenAddUserDialog}
-            >
-              Add User
-            </Button>
+            <Tooltip title={isAdmin ? 'Add new user' : 'Admin rights required'}>
+              <span>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={handleOpenAddUserDialog}
+                  disabled={!isAdmin}
+                >
+                  Add User
+                </Button>
+              </span>
+            </Tooltip>
           </Box>
 
           {users.length > 0 ? (
@@ -496,34 +546,45 @@ function Admin() {
                         )}
                       </TableCell>
                       <TableCell align="center">
-                        <Chip
-                          label={user.is_active ? 'Active' : 'Inactive'}
-                          color={user.is_active ? 'success' : 'default'}
-                          size="small"
-                          onClick={() => handleToggleUserStatus(user)}
-                          sx={{ cursor: 'pointer' }}
-                        />
+                        <Tooltip title={isAdmin ? 'Click to toggle status' : 'Admin rights required'}>
+                          <Chip
+                            label={user.is_active ? 'Active' : 'Inactive'}
+                            color={user.is_active ? 'success' : 'default'}
+                            size="small"
+                            onClick={() => handleToggleUserStatus(user)}
+                            sx={{ cursor: isAdmin ? 'pointer' : 'not-allowed', opacity: isAdmin ? 1 : 0.6 }}
+                          />
+                        </Tooltip>
                       </TableCell>
                       <TableCell align="right">{user.total_estimates}</TableCell>
                       <TableCell align="right">{user.participated_sessions}</TableCell>
                       <TableCell align="center">
-                        <Box sx={{ display: 'flex', gap: 0.5 }}>
-                          <Button
-                            startIcon={<VpnKeyIcon />}
-                            size="small"
-                            variant="outlined"
-                            onClick={() => handleOpenResetDialog(user)}
-                          >
-                            Reset
-                          </Button>
-                          <IconButton
-                            size="small"
-                            color="error"
-                            onClick={() => handleOpenDeleteDialog(user)}
-                            title="Delete user"
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
+                        <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
+                          <Tooltip title={isAdmin ? 'Reset password' : 'Admin rights required'}>
+                            <span>
+                              <Button
+                                startIcon={<VpnKeyIcon />}
+                                size="small"
+                                variant="outlined"
+                                onClick={() => handleOpenResetDialog(user)}
+                                disabled={!isAdmin}
+                              >
+                                Reset
+                              </Button>
+                            </span>
+                          </Tooltip>
+                          <Tooltip title={isAdmin ? 'Delete user' : 'Admin rights required'}>
+                            <span>
+                              <IconButton
+                                size="small"
+                                color="error"
+                                onClick={() => handleOpenDeleteDialog(user)}
+                                disabled={!isAdmin}
+                              >
+                                <DeleteIcon fontSize="small" />
+                              </IconButton>
+                            </span>
+                          </Tooltip>
                         </Box>
                       </TableCell>
                     </TableRow>
