@@ -1,7 +1,7 @@
 """Estimate schemas"""
 
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class EstimateCreate(BaseModel):
@@ -9,8 +9,23 @@ class EstimateCreate(BaseModel):
 
     session_id: int
     issue_id: int
-    story_points: int = Field(..., ge=1)
+    story_points: int = Field(..., ge=0)  # Allow 0 for Joker
     user_id: int
+    is_joker: bool = Field(default=False, description="True if user selected Joker (J) card")
+
+    @model_validator(mode='after')
+    def validate_story_points(self):
+        """Validate that story_points is valid based on is_joker flag"""
+        if self.is_joker:
+            # For Joker, story_points must be 0
+            if self.story_points != 0:
+                raise ValueError('story_points must be 0 when is_joker is True')
+        else:
+            # For normal estimates, story_points must be >= 1
+            if self.story_points < 1:
+                raise ValueError('story_points must be greater than or equal to 1')
+        
+        return self
 
     class Config:
         json_schema_extra = {
@@ -19,6 +34,7 @@ class EstimateCreate(BaseModel):
                 "issue_id": 1,
                 "story_points": 8,
                 "user_id": 1,
+                "is_joker": False,
             }
         }
 
@@ -30,6 +46,7 @@ class EstimateResponse(BaseModel):
     issue_id: int
     user_id: int
     story_points: int
+    is_joker: bool
     created_at: datetime
     updated_at: datetime
 
@@ -41,9 +58,11 @@ class EstimateSummary(BaseModel):
     """Estimate summary for an issue"""
 
     issue_id: int
-    total_estimates: int
+    total_estimates: int  # Total including Joker votes
+    valid_estimates: int  # Only non-Joker estimates
     avg_points: float
     min_points: int
     max_points: int
-    is_consensus: bool  # True if all within 2 points
-    estimates: dict  # {user_id: story_points}
+    is_consensus: bool  # True if all non-Joker estimates within 2 points
+    estimates: dict  # {user_id: {"points": int, "is_joker": bool}}
+    joker_count: int  # Number of Joker votes

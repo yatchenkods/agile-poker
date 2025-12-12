@@ -36,13 +36,15 @@ class SessionResponse(BaseModel):
     closed_at: Optional[datetime]
     participant_count: int = 0
     issue_count: int = 0
+    estimator_count: int = 0
 
     class Config:
         from_attributes = True
 
 
 class SessionDetailResponse(SessionResponse):
-    """Detailed session with participants and issues"""
+    """Detailed session with participants, estimators and issues"""
 
     participants: List[UserResponse] = []
+    estimators: List[UserResponse] = []
     issues: List[IssueResponse] = []

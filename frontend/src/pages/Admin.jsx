@@ -27,6 +27,8 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
+  Avatar,
+  AvatarGroup,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
@@ -54,6 +56,7 @@ function Admin() {
   const [issues, setIssues] = useState([]);
   const [estimationStats, setEstimationStats] = useState([]);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
+  const [issueEstimates, setIssueEstimates] = useState({});
 
   // Reset Password Dialog State
   const [resetDialog, setResetDialog] = useState(false);
@@ -140,6 +143,8 @@ function Admin() {
 
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
+        // Load estimates for each issue
+        await loadIssueEstimates(issuesRes.data);
       }
 
       setEstimationStats(estimationRes.data || []);
@@ -148,6 +153,28 @@ function Admin() {
       setError(err.response?.data?.detail || 'Failed to load admin data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadIssueEstimates = async (issuesList) => {
+    try {
+      const estimatesMap = {};
+      
+      for (const issue of issuesList) {
+        try {
+          const res = await api.get(`/estimates/`, {
+            params: { issue_id: issue.id },
+          });
+          estimatesMap[issue.id] = res.data || [];
+        } catch (err) {
+          console.error(`Failed to load estimates for issue ${issue.id}:`, err);
+          estimatesMap[issue.id] = [];
+        }
+      }
+      
+      setIssueEstimates(estimatesMap);
+    } catch (err) {
+      console.error('Failed to load issue estimates:', err);
     }
   };
 
@@ -414,6 +441,61 @@ function Admin() {
   const filteredIssues = showOnlyPending
     ? issues.filter((issue) => !issue.is_estimated)
     : issues;
+
+  const getUserName = (userId) => {
+    const user = users.find((u) => u.id === userId);
+    return user ? user.full_name : `User #${userId}`;
+  };
+
+  const getAvatarColor = (userId) => {
+    const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'];
+    return colors[userId % colors.length];
+  };
+
+  const renderEstimates = (estimates) => {
+    if (!estimates || estimates.length === 0) {
+      return <Typography variant="caption">No estimates</Typography>;
+    }
+
+    return (
+      <AvatarGroup max={6} sx={{ justifyContent: 'flex-start' }}>
+        {estimates.map((est) => {
+          const isJoker = est.is_joker;
+          const displayValue = isJoker ? 'J' : est.story_points;
+          const userName = getUserName(est.user_id);
+          const avatarColor = getAvatarColor(est.user_id);
+
+          return (
+            <Tooltip
+              key={est.id}
+              title={`${userName}: ${isJoker ? 'Joker (abstain)' : displayValue + ' points'}`}
+              arrow
+            >
+              <Avatar
+                sx={{
+                  width: 40,
+                  height: 40,
+                  backgroundColor: isJoker ? '#FFD700' : avatarColor,
+                  color: isJoker ? '#000' : '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  border: '2px solid white',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.15)',
+                  },
+                }}
+              >
+                {displayValue}
+              </Avatar>
+            </Tooltip>
+          );
+        })}
+      </AvatarGroup>
+    );
+  };
 
   if (!isAdmin && !loading) {
     return (
@@ -895,57 +977,72 @@ function Admin() {
                       <TableCell align="center">
                         <strong>Status</strong>
                       </TableCell>
+                      <TableCell>
+                        <strong>User Estimates</strong>
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredIssues.map((issue) => (
-                      <TableRow
-                        key={issue.id}
-                        sx={{
-                          backgroundColor: !issue.is_estimated
-                            ? '#fff9c4'
-                            : 'inherit',
-                          '&:hover': {
+                    {filteredIssues.map((issue) => {
+                      const estimates = issueEstimates[issue.id] || [];
+
+                      return (
+                        <TableRow
+                          key={issue.id}
+                          sx={{
                             backgroundColor: !issue.is_estimated
-                              ? '#ffeb3b'
-                              : '#f5f5f5',
-                          },
-                        }}
-                      >
-                        <TableCell sx={{ fontWeight: 'bold' }}>
-                          {issue.jira_key}
-                        </TableCell>
-                        <TableCell>{issue.title}</TableCell>
-                        <TableCell>
-                          {issue.session_name || 'N/A'}
-                        </TableCell>
-                        <TableCell align="center">
-                          {issue.story_points ? (
-                            <Chip
-                              label={`${issue.story_points} pts`}
-                              color="success"
-                            />
-                          ) : (
-                            <Chip label="Not set" variant="outlined" />
-                          )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {issue.is_estimated ? (
-                            <Chip
-                              label="Estimated"
-                              color="success"
-                              size="small"
-                            />
-                          ) : (
-                            <Chip
-                              label="Pending"
-                              color="warning"
-                              size="small"
-                            />
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                              ? '#fff9c4'
+                              : 'inherit',
+                            '&:hover': {
+                              backgroundColor: !issue.is_estimated
+                                ? '#ffeb3b'
+                                : '#f5f5f5',
+                            },
+                          }}
+                        >
+                          <TableCell sx={{ fontWeight: 'bold' }}>
+                            {issue.jira_key}
+                          </TableCell>
+                          <TableCell>{issue.title}</TableCell>
+                          <TableCell>
+                            {issue.session_name || 'N/A'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.story_points ? (
+                              <Chip
+                                label={`${issue.story_points} pts`}
+                                color="success"
+                              />
+                            ) : (
+                              <Chip
+                                label="Not set"
+                                variant="outlined"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.is_estimated ? (
+                              <Chip
+                                label="Estimated"
+                                color="success"
+                                size="small"
+                              />
+                            ) : (
+                              <Chip
+                                label="Pending"
+                                color="warning"
+                                size="small"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ py: 1 }}>
+                              {renderEstimates(estimates)}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>

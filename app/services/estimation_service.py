@@ -22,6 +22,7 @@ class EstimationService:
         if existing:
             # Update existing estimate
             existing.story_points = estimate_data.story_points
+            existing.is_joker = estimate_data.is_joker
             db.add(existing)
         else:
             # Create new estimate (exclude session_id as it's not in the model)
@@ -66,22 +67,48 @@ class EstimationService:
         if not estimates:
             return None
         
-        points = [e.story_points for e in estimates]
+        # Separate joker and regular estimates
+        joker_estimates = [e for e in estimates if e.is_joker]
+        valid_estimates = [e for e in estimates if not e.is_joker]
+        
+        # If no valid estimates (all jokers), return summary without consensus
+        if not valid_estimates:
+            estimates_dict = {e.user_id: {"points": 0, "is_joker": True} for e in estimates}
+            return EstimateSummary(
+                issue_id=issue_id,
+                total_estimates=len(estimates),
+                valid_estimates=0,
+                avg_points=0.0,
+                min_points=0,
+                max_points=0,
+                is_consensus=False,
+                estimates=estimates_dict,
+                joker_count=len(joker_estimates),
+            )
+        
+        points = [e.story_points for e in valid_estimates]
         avg = sum(points) / len(points)
         
-        # Check if consensus (all within 2 points)
+        # Check if consensus (all valid estimates within 2 points)
         is_consensus = (max(points) - min(points)) <= 2
         
-        estimates_dict = {e.user_id: e.story_points for e in estimates}
+        estimates_dict = {}
+        for e in estimates:
+            estimates_dict[e.user_id] = {
+                "points": 0 if e.is_joker else e.story_points,
+                "is_joker": e.is_joker
+            }
         
         return EstimateSummary(
             issue_id=issue_id,
             total_estimates=len(estimates),
+            valid_estimates=len(valid_estimates),
             avg_points=avg,
             min_points=min(points),
             max_points=max(points),
             is_consensus=is_consensus,
             estimates=estimates_dict,
+            joker_count=len(joker_estimates),
         )
 
     @staticmethod
@@ -107,28 +134,45 @@ class EstimationService:
     def _check_consensus(db: Session, issue_id: int) -> bool:
         """Check if estimates have reached consensus and auto-apply"""
         issue = db.query(Issue).filter(Issue.id == issue_id).first()
-        if not issue:
+        if not issue or issue.is_estimated:
             return False
         
-        # Get session participants count
+        # Get session estimators count
         from app.models.session import Session as SessionModel
         session = db.query(SessionModel).filter(SessionModel.id == issue.session_id).first()
-        participants_count = len(session.participants) if session else 0
-        
-        if participants_count == 0:
+        if not session:
             return False
         
-        # Get estimates
+        # Get estimators count (people assigned to estimate tasks)
+        # If no estimators assigned, use all participants as fallback
+        if session.estimators and len(session.estimators) > 0:
+            estimators_count = len(session.estimators)
+        else:
+            estimators_count = len(session.participants) if session.participants else 0
+        
+        if estimators_count == 0:
+            return False
+        
+        # Get all estimates (both regular and joker)
         estimates = db.query(Estimate).filter(Estimate.issue_id == issue_id).all()
+        estimate_count = len(estimates)
         
-        # All participants must have voted
-        if len(estimates) < participants_count:
+        # Check if all estimators have voted (including joker votes)
+        if estimate_count < estimators_count:
             return False
         
-        points = [e.story_points for e in estimates]
+        # Only consider non-joker estimates for consensus calculation
+        valid_estimates = [e for e in estimates if not e.is_joker]
         
-        # Check if consensus (max - min <= 2 points)
-        if (max(points) - min(points)) <= 2:
+        # If no valid estimates (only jokers), cannot reach consensus
+        if not valid_estimates:
+            return False
+        
+        points = [e.story_points for e in valid_estimates]
+        variance = max(points) - min(points)
+        
+        # Check if consensus: max - min <= 2 points AND all estimators have voted
+        if variance <= 2 and estimate_count >= estimators_count:
             # Calculate average and round to nearest valid score
             avg = sum(points) / len(points)
             valid_scores = [1, 2, 4, 8, 16]
