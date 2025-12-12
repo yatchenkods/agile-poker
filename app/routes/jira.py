@@ -26,6 +26,34 @@ class ImportSprintRequest(BaseModel):
         }
 
 
+class ListSprintsRequest(BaseModel):
+    """List sprints request schema"""
+    project_key: str
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "project_key": "PROJ",
+            }
+        }
+
+
+class Sprint(BaseModel):
+    """Sprint schema"""
+    id: int
+    name: str
+    state: str = ""
+    board_id: int = 0
+
+
+class ListSprintsResponse(BaseModel):
+    """List sprints response schema"""
+    status: str
+    project_key: str
+    sprints: List[Sprint]
+    count: int
+
+
 class Issue(BaseModel):
     """Issue schema"""
     key: str
@@ -69,7 +97,7 @@ async def test_jira_connection():
         if not configured:
             return ConnectionTestResponse(
                 status="error",
-                message="Jira not configured. Please set JIRA_BASE_URL, JIRA_USERNAME, and JIRA_API_TOKEN environment variables.",
+                message="Jira not configured. Please set JIRA_URL, JIRA_USERNAME, and JIRA_API_TOKEN environment variables.",
                 configured=False,
                 connected=False,
                 details={
@@ -122,6 +150,75 @@ async def test_jira_connection():
         )
 
 
+@router.post("/list-sprints", response_model=ListSprintsResponse)
+async def list_sprints(request: ListSprintsRequest):
+    """
+    List all available sprints in a Jira project
+
+    Args:
+        project_key: Jira project key (e.g., 'PROJ')
+
+    Returns:
+        List of sprints with their names and states
+    """
+    logger.info(f"Received list sprints request for project {request.project_key}")
+    
+    # Validate input
+    if not request.project_key:
+        logger.warning("Missing required parameter: project_key")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="project_key is required",
+        )
+
+    # Check Jira connection
+    logger.info("Validating Jira connection")
+    if not jira_service.validate_connection():
+        logger.error("Jira connection validation failed")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Cannot connect to Jira. Please check Jira configuration.",
+        )
+
+    try:
+        # Get sprints
+        logger.info(f"Fetching sprints for project {request.project_key}")
+        sprints_data = jira_service.get_sprints_for_project(request.project_key.upper())
+
+        if not sprints_data:
+            logger.warning(f"No sprints found for project {request.project_key}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"No sprints found for project '{request.project_key}'. Please verify the project key.",
+            )
+
+        sprints = []
+        for sprint_data in sprints_data:
+            sprints.append(Sprint(
+                id=sprint_data.get('id', 0),
+                name=sprint_data.get('name', ''),
+                state=sprint_data.get('state', ''),
+                board_id=sprint_data.get('board_id', 0),
+            ))
+
+        logger.info(f"Successfully retrieved {len(sprints)} sprints for project {request.project_key}")
+        return ListSprintsResponse(
+            status="success",
+            project_key=request.project_key.upper(),
+            sprints=sprints,
+            count=len(sprints)
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing sprints: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing sprints: {str(e)}",
+        )
+
+
 @router.post("/import-sprint", response_model=ImportSprintResponse)
 async def import_sprint(request: ImportSprintRequest):
     """
@@ -150,7 +247,7 @@ async def import_sprint(request: ImportSprintRequest):
         logger.error("Jira connection validation failed")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cannot connect to Jira. Please check Jira configuration (JIRA_BASE_URL, JIRA_USERNAME, JIRA_API_TOKEN). Use /jira/test-connection to diagnose.",
+            detail="Cannot connect to Jira. Please check Jira configuration (JIRA_URL, JIRA_USERNAME, JIRA_API_TOKEN). Use /jira/test-connection to diagnose.",
         )
 
     try:
@@ -165,7 +262,7 @@ async def import_sprint(request: ImportSprintRequest):
             logger.warning(f"No issues found in sprint '{request.sprint_name}' for project '{request.project_key}'")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No issues found in sprint '{request.sprint_name}' for project '{request.project_key}'. Please check the project key and sprint name. Use /jira/test-connection to verify Jira connection.",
+                detail=f"No issues found in sprint '{request.sprint_name}' for project '{request.project_key}'. Please check the project key and sprint name. Use /jira/list-sprints to see available sprints.",
             )
 
         logger.info(f"Successfully imported {len(issues)} issues")
