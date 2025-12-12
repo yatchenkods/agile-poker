@@ -27,6 +27,8 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
+  Popover,
+  Stack,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -45,12 +47,15 @@ function Admin() {
   const [activeTab, setActiveTab] = useState(0);
   const [stats, setStats] = useState(null);
   const [issues, setIssues] = useState([]);
+  const [issueEstimates, setIssueEstimates] = useState({});
   const [users, setUsers] = useState([]);
   const [estimationStats, setEstimationStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
+  const [estimatesPopover, setEstimatesPopover] = useState(null);
+  const [selectedIssueEstimates, setSelectedIssueEstimates] = useState(null);
   
   const [resetDialog, setResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -124,6 +129,8 @@ function Admin() {
       const issuesRes = await api.get('/issues/');
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
+        // Load estimates for each issue
+        loadIssueEstimates(issuesRes.data);
       }
 
       const estimationRes = await api.get('/admin/conflicting-estimates');
@@ -134,6 +141,48 @@ function Admin() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadIssueEstimates = async (issuesList) => {
+    const estimatesMap = {};
+    
+    for (const issue of issuesList) {
+      try {
+        const estimatesRes = await api.get('/estimates/', {
+          params: { issue_id: issue.id }
+        });
+        estimatesMap[issue.id] = estimatesRes.data || [];
+      } catch (err) {
+        console.error(`Failed to load estimates for issue ${issue.id}:`, err);
+        estimatesMap[issue.id] = [];
+      }
+    }
+    
+    setIssueEstimates(estimatesMap);
+  };
+
+  const handleShowEstimates = (event, issue) => {
+    const estimates = issueEstimates[issue.id] || [];
+    setSelectedIssueEstimates({
+      issue,
+      estimates,
+      userMap: users.reduce((acc, u) => ({ ...acc, [u.id]: u }), {})
+    });
+    setEstimatesPopover(event.currentTarget);
+  };
+
+  const handleCloseEstimatesPopover = () => {
+    setEstimatesPopover(null);
+    setSelectedIssueEstimates(null);
+  };
+
+  const getEstimateColor = (estimates) => {
+    if (estimates.length === 0) return 'default';
+    const points = estimates.map(e => e.story_points);
+    const unique = new Set(points);
+    if (unique.size === 1) return 'success';
+    if (unique.size <= 2) return 'warning';
+    return 'error';
   };
 
   const checkPermission = () => {
@@ -640,40 +689,58 @@ function Admin() {
                       <TableCell><strong>Issue Key</strong></TableCell>
                       <TableCell><strong>Title</strong></TableCell>
                       <TableCell><strong>Session</strong></TableCell>
+                      <TableCell align="center"><strong>User Estimates</strong></TableCell>
                       <TableCell align="center"><strong>Current Estimate</strong></TableCell>
                       <TableCell align="center"><strong>Status</strong></TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredIssues.map((issue) => (
-                      <TableRow 
-                        key={issue.id}
-                        sx={{
-                          backgroundColor: !issue.is_estimated ? '#fff9c4' : 'inherit',
-                          '&:hover': {
-                            backgroundColor: !issue.is_estimated ? '#ffeb3b' : '#f5f5f5'
-                          }
-                        }}
-                      >
-                        <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
-                        <TableCell>{issue.title}</TableCell>
-                        <TableCell>{issue.session_name || 'N/A'}</TableCell>
-                        <TableCell align="center">
-                          {issue.story_points ? (
-                            <Chip label={`${issue.story_points} pts`} color="success" />
-                          ) : (
-                            <Chip label="Not set" variant="outlined" />
-                          )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {issue.is_estimated ? (
-                            <Chip label="Estimated" color="success" size="small" />
-                          ) : (
-                            <Chip label="Pending" color="warning" size="small" />
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredIssues.map((issue) => {
+                      const estimates = issueEstimates[issue.id] || [];
+                      const estimateColor = getEstimateColor(estimates);
+                      
+                      return (
+                        <TableRow 
+                          key={issue.id}
+                          sx={{
+                            backgroundColor: !issue.is_estimated ? '#fff9c4' : 'inherit',
+                            '&:hover': {
+                              backgroundColor: !issue.is_estimated ? '#ffeb3b' : '#f5f5f5'
+                            }
+                          }}
+                        >
+                          <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
+                          <TableCell>{issue.title}</TableCell>
+                          <TableCell>{issue.session_name || 'N/A'}</TableCell>
+                          <TableCell align="center">
+                            <Tooltip title="Click to see who voted for each estimate">
+                              <Chip
+                                label={`${estimates.length} votes`}
+                                color={estimateColor}
+                                variant="outlined"
+                                size="small"
+                                onClick={(e) => handleShowEstimates(e, issue)}
+                                sx={{ cursor: 'pointer' }}
+                              />
+                            </Tooltip>
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.story_points ? (
+                              <Chip label={`${issue.story_points} pts`} color="success" />
+                            ) : (
+                              <Chip label="Not set" variant="outlined" />
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.is_estimated ? (
+                              <Chip label="Estimated" color="success" size="small" />
+                            ) : (
+                              <Chip label="Pending" color="warning" size="small" />
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -688,6 +755,56 @@ function Admin() {
           )}
         </Box>
       )}
+
+      <Popover
+        open={Boolean(estimatesPopover)}
+        anchorEl={estimatesPopover}
+        onClose={handleCloseEstimatesPopover}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        {selectedIssueEstimates && (
+          <Box sx={{ p: 2, minWidth: 300 }}>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
+              {selectedIssueEstimates.issue.jira_key}: {selectedIssueEstimates.issue.title}
+            </Typography>
+            
+            {selectedIssueEstimates.estimates.length > 0 ? (
+              <Stack spacing={1}>
+                {selectedIssueEstimates.estimates.map((estimate, idx) => {
+                  const user = selectedIssueEstimates.userMap[estimate.user_id];
+                  return (
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        p: 1,
+                        backgroundColor: '#f5f5f5',
+                        borderRadius: 1,
+                      }}
+                    >
+                      <Typography variant="body2">
+                        {user?.full_name || 'Unknown'}
+                      </Typography>
+                      <Chip
+                        label={`${estimate.story_points} pts`}
+                        size="small"
+                        color="primary"
+                        variant="outlined"
+                      />
+                    </Box>
+                  );
+                })}
+              </Stack>
+            ) : (
+              <Typography variant="body2" color="textSecondary">
+                No estimates yet
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Popover>
 
       <Dialog open={resetDialog} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
         <DialogTitle>🔐 Reset Password</DialogTitle>
