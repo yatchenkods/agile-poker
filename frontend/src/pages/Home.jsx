@@ -17,8 +17,6 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
-  Link,
-  Autocomplete,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
@@ -33,9 +31,8 @@ function Home() {
   const [formData, setFormData] = useState({
     name: '',
     description: '',
-    project_key: '',
-    sprint_name: '',
     import_from_jira: false,
+    issue_keys_text: '',
   });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
@@ -44,8 +41,7 @@ function Home() {
   const [importStats, setImportStats] = useState(null);
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionTest, setConnectionTest] = useState(null);
-  const [sprints, setSprints] = useState([]);
-  const [loadingSprints, setLoadingSprints] = useState(false);
+  const [failedKeys, setFailedKeys] = useState([]);
 
   useEffect(() => {
     loadSessions();
@@ -62,39 +58,12 @@ function Home() {
     }
   };
 
-  const handleLoadSprints = async () => {
-    if (!formData.project_key) {
-      setError('Please enter Jira Project Key first');
-      return;
-    }
-
-    setLoadingSprints(true);
-    setError(null);
-
-    try {
-      const response = await api.post('/jira/list-sprints', {
-        project_key: formData.project_key.toUpperCase(),
-      });
-
-      const sprintList = response.data.sprints.map(sprint => ({
-        id: sprint.id,
-        label: `${sprint.name} (${sprint.state})`,
-        name: sprint.name,
-      }));
-      setSprints(sprintList);
-
-      if (sprintList.length === 0) {
-        setError('No sprints found for this project');
-      }
-    } catch (err) {
-      console.error('Failed to load sprints:', err);
-      setError(
-        err.response?.data?.detail ||
-        'Failed to load sprints. Check your Project Key.'
-      );
-    } finally {
-      setLoadingSprints(false);
-    }
+  // Parse issue keys from text input (handles spaces, commas, newlines)
+  const parseIssueKeys = (text) => {
+    return text
+      .split(/[\s,]+/) // Split by whitespace or commas
+      .map((key) => key.trim().toUpperCase())
+      .filter((key) => key && /^[A-Z]+-\d+$/.test(key)); // Filter valid keys (e.g., DEVOPS-123)
   };
 
   const handleTestJiraConnection = async () => {
@@ -114,39 +83,40 @@ function Home() {
   };
 
   const handleImportFromJira = async () => {
-    if (!formData.project_key) {
-      setError('Please enter Jira Project Key');
-      return;
-    }
+    const issueKeys = parseIssueKeys(formData.issue_keys_text);
 
-    if (!formData.sprint_name) {
-      setError('Please select Sprint Name');
+    if (issueKeys.length === 0) {
+      setError('Please enter at least one valid Jira issue key (e.g., DEVOPS-123)');
       return;
     }
 
     setImportLoading(true);
     setError(null);
+    setFailedKeys([]);
 
     try {
-      const response = await api.post('/jira/import-sprint', {
-        project_key: formData.project_key.toUpperCase(),
-        sprint_name: formData.sprint_name,
+      const response = await api.post('/jira/import-by-keys', {
+        issue_keys: issueKeys,
       });
 
       setImportedIssues(response.data.issues || []);
+      setFailedKeys(response.data.failed_keys || []);
       setImportStats({
         total: response.data.count || 0,
         status: response.data.status,
+        failed: response.data.failed_count || 0,
       });
 
-      if (response.data.issues?.length === 0) {
-        setError('No issues found in the specified sprint');
+      if (response.data.issues?.length === 0 && response.data.failed_count > 0) {
+        setError(
+          `Failed to import ${response.data.failed_count} issue(s). Check the keys and try again.`
+        );
       }
     } catch (err) {
       console.error('Failed to import from Jira:', err);
       setError(
         err.response?.data?.detail ||
-        'Failed to import issues from Jira. Please check Project Key and Sprint Name.'
+        'Failed to import issues from Jira. Please check your connection and issue keys.'
       );
     } finally {
       setImportLoading(false);
@@ -166,22 +136,20 @@ function Home() {
       const response = await api.post('/sessions/', {
         name: formData.name,
         description: formData.description,
-        project_key: formData.project_key || undefined,
-        import_issues: importedIssues.map(issue => issue.key),
+        import_issues: importedIssues.map((issue) => issue.key),
       });
 
       setOpenDialog(false);
       setFormData({
         name: '',
         description: '',
-        project_key: '',
-        sprint_name: '',
         import_from_jira: false,
+        issue_keys_text: '',
       });
       setImportedIssues([]);
       setImportStats(null);
       setConnectionTest(null);
-      setSprints([]);
+      setFailedKeys([]);
       loadSessions();
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -201,6 +169,7 @@ function Home() {
     setImportedIssues([]);
     setImportStats(null);
     setConnectionTest(null);
+    setFailedKeys([]);
   };
 
   const handleDialogClose = () => {
@@ -208,15 +177,14 @@ function Home() {
     setFormData({
       name: '',
       description: '',
-      project_key: '',
-      sprint_name: '',
       import_from_jira: false,
+      issue_keys_text: '',
     });
     setImportedIssues([]);
     setImportStats(null);
     setError(null);
     setConnectionTest(null);
-    setSprints([]);
+    setFailedKeys([]);
   };
 
   if (loading) {
@@ -225,13 +193,16 @@ function Home() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 4,
+        }}
+      >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleDialogOpen}
-        >
+        <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
           New Session
         </Button>
       </Box>
@@ -251,12 +222,8 @@ function Home() {
                   {session.description}
                 </Typography>
                 <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                  <Typography variant="caption">
-                    👥 {session.participant_count}
-                  </Typography>
-                  <Typography variant="caption">
-                    📋 {session.issue_count}
-                  </Typography>
+                  <Typography variant="caption">👥 {session.participant_count}</Typography>
+                  <Typography variant="caption">📋 {session.issue_count}</Typography>
                 </Box>
               </CardContent>
             </Card>
@@ -304,7 +271,7 @@ function Home() {
 
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
-              📋 Import from Jira (Optional)
+              📋 Import Issues from Jira (Optional)
             </Typography>
             <FormControlLabel
               control={
@@ -317,53 +284,25 @@ function Home() {
                   disabled={importLoading || creating}
                 />
               }
-              label="Import issues from Jira sprint"
+              label="Import issues by keys"
             />
 
             {formData.import_from_jira && (
               <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-                <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
-                  <TextField
-                    label="Jira Project Key"
-                    value={formData.project_key}
-                    onChange={(e) => {
-                      setFormData({ ...formData, project_key: e.target.value });
-                      setSprints([]);
-                    }}
-                    disabled={importLoading || loadingSprints}
-                    helperText="e.g., DEVOPS"
-                    sx={{ flex: 1 }}
-                  />
-                  <Button
-                    variant="outlined"
-                    startIcon={loadingSprints ? <CircularProgress size={20} /> : <GetAppIcon />}
-                    onClick={handleLoadSprints}
-                    disabled={loadingSprints || !formData.project_key}
-                    sx={{ mt: 1, minWidth: 120 }}
-                  >
-                    {loadingSprints ? 'Loading...' : 'Load Sprints'}
-                  </Button>
-                </Box>
-
-                <Autocomplete
-                  options={sprints}
-                  getOptionLabel={(option) => option.label}
-                  value={
-                    sprints.find((s) => s.name === formData.sprint_name) || null
-                  }
-                  onChange={(e, value) => {
-                    setFormData({ ...formData, sprint_name: value?.name || '' });
-                  }}
-                  disabled={importLoading || sprints.length === 0}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Sprint Name"
-                      placeholder="Select or type sprint name"
-                      helperText="Click 'Load Sprints' first"
-                    />
-                  )}
+                <TextField
+                  label="Issue Keys"
                   fullWidth
+                  multiline
+                  rows={4}
+                  placeholder="Enter issue keys separated by spaces, commas, or newlines:&#10;DEVOPS-123&#10;DEVOPS-456 DEVOPS-789&#10;or: DEVOPS-123, DEVOPS-456, DEVOPS-789"
+                  value={formData.issue_keys_text}
+                  onChange={(e) => {
+                    setFormData({ ...formData, issue_keys_text: e.target.value });
+                    setError(null);
+                  }}
+                  disabled={importLoading}
+                  margin="normal"
+                  helperText="Valid format: DEVOPS-123, PROJECT-456, etc."
                 />
 
                 <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
@@ -372,7 +311,7 @@ function Home() {
                     variant="outlined"
                     startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
                     onClick={handleImportFromJira}
-                    disabled={importLoading || !formData.sprint_name}
+                    disabled={importLoading || !formData.issue_keys_text.trim()}
                   >
                     {importLoading ? 'Importing...' : 'Import Issues'}
                   </Button>
@@ -413,8 +352,38 @@ function Home() {
             )}
 
             {importStats && (
-              <Alert severity="success" sx={{ mt: 2 }}>
-                ✅ Successfully imported {importStats.total} issue{importStats.total !== 1 ? 's' : ''}
+              <Alert
+                severity={importStats.failed === 0 ? 'success' : 'info'}
+                sx={{ mt: 2 }}
+              >
+                ✅ Successfully imported {importStats.total} issue
+                {importStats.total !== 1 ? 's' : ''}
+                {importStats.failed > 0 && ` (${importStats.failed} failed)`}
+              </Alert>
+            )}
+
+            {failedKeys.length > 0 && (
+              <Alert severity="warning" sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  Failed to import {failedKeys.length} issue(s):
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {failedKeys.map((key) => (
+                    <Box
+                      key={key}
+                      sx={{
+                        bgcolor: '#ffebee',
+                        p: 0.5,
+                        px: 1,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {key}
+                    </Box>
+                  ))}
+                </Box>
               </Alert>
             )}
 
@@ -436,7 +405,7 @@ function Home() {
                         fontWeight: 'bold',
                       }}
                     >
-                      {issue.key}
+                      {issue.key}: {issue.title}
                     </Box>
                   ))}
                   {importedIssues.length > 10 && (

@@ -12,46 +12,16 @@ router = APIRouter()
 jira_service = JiraService()
 
 
-class ImportSprintRequest(BaseModel):
-    """Import sprint request schema"""
-    project_key: str
-    sprint_name: str
+class ImportByKeysRequest(BaseModel):
+    """Import issues by keys request schema"""
+    issue_keys: List[str]
 
     class Config:
         json_schema_extra = {
             "example": {
-                "project_key": "PROJ",
-                "sprint_name": "Sprint 1",
+                "issue_keys": ["DEVOPS-123", "DEVOPS-456", "DEVOPS-789"],
             }
         }
-
-
-class ListSprintsRequest(BaseModel):
-    """List sprints request schema"""
-    project_key: str
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "project_key": "PROJ",
-            }
-        }
-
-
-class Sprint(BaseModel):
-    """Sprint schema"""
-    id: int
-    name: str
-    state: str = ""
-    board_id: int = 0
-
-
-class ListSprintsResponse(BaseModel):
-    """List sprints response schema"""
-    status: str
-    project_key: str
-    sprints: List[Sprint]
-    count: int
 
 
 class Issue(BaseModel):
@@ -62,11 +32,13 @@ class Issue(BaseModel):
     issue_type: str = ""
 
 
-class ImportSprintResponse(BaseModel):
-    """Import sprint response schema"""
+class ImportByKeysResponse(BaseModel):
+    """Import by keys response schema"""
     status: str
     issues: List[Issue]
     count: int
+    failed_count: int = 0
+    failed_keys: List[str] = []
 
 
 class ConnectionTestResponse(BaseModel):
@@ -150,95 +122,25 @@ async def test_jira_connection():
         )
 
 
-@router.post("/list-sprints", response_model=ListSprintsResponse)
-async def list_sprints(request: ListSprintsRequest):
+@router.post("/import-by-keys", response_model=ImportByKeysResponse)
+async def import_issues_by_keys(request: ImportByKeysRequest):
     """
-    List all available sprints in a Jira project
+    Import issues from Jira by their keys
 
     Args:
-        project_key: Jira project key (e.g., 'PROJ')
+        issue_keys: List of Jira issue keys (e.g., ['DEVOPS-123', 'DEVOPS-456'])
 
     Returns:
-        List of sprints with their names and states
+        List of imported issues with their details
     """
-    logger.info(f"Received list sprints request for project {request.project_key}")
+    logger.info(f"Received import request for {len(request.issue_keys)} issue(s)")
     
     # Validate input
-    if not request.project_key:
-        logger.warning("Missing required parameter: project_key")
+    if not request.issue_keys or len(request.issue_keys) == 0:
+        logger.warning("No issue keys provided")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="project_key is required",
-        )
-
-    # Check Jira connection
-    logger.info("Validating Jira connection")
-    if not jira_service.validate_connection():
-        logger.error("Jira connection validation failed")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Cannot connect to Jira. Please check Jira configuration.",
-        )
-
-    try:
-        # Get sprints
-        logger.info(f"Fetching sprints for project {request.project_key}")
-        sprints_data = jira_service.get_sprints_for_project(request.project_key.upper())
-
-        if not sprints_data:
-            logger.warning(f"No sprints found for project {request.project_key}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No sprints found for project '{request.project_key}'. Please verify the project key.",
-            )
-
-        sprints = []
-        for sprint_data in sprints_data:
-            sprints.append(Sprint(
-                id=sprint_data.get('id', 0),
-                name=sprint_data.get('name', ''),
-                state=sprint_data.get('state', ''),
-                board_id=sprint_data.get('board_id', 0),
-            ))
-
-        logger.info(f"Successfully retrieved {len(sprints)} sprints for project {request.project_key}")
-        return ListSprintsResponse(
-            status="success",
-            project_key=request.project_key.upper(),
-            sprints=sprints,
-            count=len(sprints)
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error listing sprints: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing sprints: {str(e)}",
-        )
-
-
-@router.post("/import-sprint", response_model=ImportSprintResponse)
-async def import_sprint(request: ImportSprintRequest):
-    """
-    Import issues from a Jira sprint
-
-    Query Parameters:
-    - project_key: Jira project key (e.g., 'PROJ')
-    - sprint_name: Sprint name (e.g., 'Sprint 1')
-
-    Returns:
-        List of issues from the sprint
-    """
-    logger.info(f"Received import request for project {request.project_key}, sprint {request.sprint_name}")
-    
-    # Validate input
-    if not request.project_key or not request.sprint_name:
-        logger.warning("Missing required parameters: project_key or sprint_name")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Both project_key and sprint_name are required",
+            detail="At least one issue key is required",
         )
 
     # Check Jira connection
@@ -251,32 +153,36 @@ async def import_sprint(request: ImportSprintRequest):
         )
 
     try:
-        # Get issues from sprint
-        logger.info(f"Importing issues from sprint: project={request.project_key}, sprint={request.sprint_name}")
-        issues = jira_service.get_sprint_issues(
-            request.project_key.upper(),
-            request.sprint_name
-        )
+        # Get issues by keys
+        logger.info(f"Importing {len(request.issue_keys)} issue(s): {request.issue_keys}")
+        issues = jira_service.get_issues_by_keys(request.issue_keys)
 
-        if not issues:
-            logger.warning(f"No issues found in sprint '{request.sprint_name}' for project '{request.project_key}'")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"No issues found in sprint '{request.sprint_name}' for project '{request.project_key}'. Please check the project key and sprint name. Use /jira/list-sprints to see available sprints.",
-            )
+        # Calculate failed keys
+        successful_keys = {issue['key'].upper() for issue in issues}
+        failed_keys = [
+            key.upper() for key in request.issue_keys 
+            if key.upper() not in successful_keys
+        ]
+        failed_count = len(failed_keys)
 
-        logger.info(f"Successfully imported {len(issues)} issues")
-        return ImportSprintResponse(
-            status="success",
+        logger.info(f"Successfully imported {len(issues)} out of {len(request.issue_keys)} issue(s)")
+        
+        if failed_count > 0:
+            logger.warning(f"Failed to import {failed_count} issue(s): {failed_keys}")
+
+        return ImportByKeysResponse(
+            status="success" if len(issues) > 0 else "partial",
             issues=issues,
-            count=len(issues)
+            count=len(issues),
+            failed_count=failed_count,
+            failed_keys=failed_keys,
         )
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error importing sprint: {e}", exc_info=True)
+        logger.error(f"Error importing issues by keys: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error importing sprint: {str(e)}",
+            detail=f"Error importing issues: {str(e)}",
         )
