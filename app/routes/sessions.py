@@ -472,7 +472,7 @@ async def remove_user_from_session(
     return {"message": "User removed from session"}
 
 
-@router.post("/{session_id}/estimators/{user_id}", response_model=SessionResponse)
+@router.post("/{session_id}/estimators/{user_id}", response_model=SessionDetailResponse)
 async def add_estimator_to_session(
     session_id: int,
     user_id: int,
@@ -491,12 +491,12 @@ async def add_estimator_to_session(
         )
     
     session_service.add_estimator_to_session(db, session_id, user_id)
-    # Return updated session
+    # Return updated session with full details
     updated_session = session_service.get_session(db, session_id)
-    return session_service._enrich_session(updated_session)
+    return session_service._enrich_session_detail(updated_session)
 
 
-@router.delete("/{session_id}/estimators/{user_id}", response_model=SessionResponse)
+@router.delete("/{session_id}/estimators/{user_id}", response_model=SessionDetailResponse)
 async def remove_estimator_from_session(
     session_id: int,
     user_id: int,
@@ -515,6 +515,6 @@ async def remove_estimator_from_session(
         )
     
     session_service.remove_estimator_from_session(db, session_id, user_id)
-    # Return updated session
+    # Return updated session with full details
     updated_session = session_service.get_session(db, session_id)
-    return session_service._enrich_session(updated_session)
+    return session_service._enrich_session_detail(updated_session)
