@@ -34,6 +34,7 @@ function Admin() {
   const [usersStats, setUsersStats] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [resetDialog, setResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
@@ -47,32 +48,36 @@ function Admin() {
   }, []);
 
   const loadAdminData = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const [statsRes, conflictsRes, usersRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/conflicting-estimates'),
         api.get('/admin/users-stats'),
       ]);
+
       setStats(statsRes.data);
-      setConflicts(conflictsRes.data);
-      setUsersStats(usersRes.data);
+      setConflicts(conflictsRes.data || []);
+      setUsersStats(usersRes.data || []);
 
       // Extract users from usersStats
-      if (usersRes.data) {
-        setUsers(
-          usersRes.data.map((stat) => ({
-            id: stat.user_id,
-            email: stat.email,
-            full_name: stat.full_name,
-            is_active: stat.is_active,
-            is_admin: stat.is_admin,
-            total_estimates: stat.total_estimates,
-            participated_sessions: stat.participated_sessions,
-          }))
-        );
+      if (usersRes.data && Array.isArray(usersRes.data)) {
+        const userList = usersRes.data.map((stat) => ({
+          id: stat.user_id,
+          email: stat.email,
+          full_name: stat.full_name,
+          is_active: stat.is_active,
+          is_admin: stat.is_admin || false,
+          total_estimates: stat.total_estimates,
+          participated_sessions: stat.participated_sessions,
+        }));
+        setUsers(userList);
+        console.log('Loaded users:', userList);
       }
     } catch (err) {
       console.error('Failed to load admin data:', err);
+      setError(err.response?.data?.detail || 'Failed to load admin data');
     } finally {
       setLoading(false);
     }
@@ -134,7 +139,11 @@ function Admin() {
   };
 
   if (loading) {
-    return <Typography>Loading admin dashboard...</Typography>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   return (
@@ -142,6 +151,12 @@ function Admin() {
       <Typography variant="h4" gutterBottom>
         🛠️ Admin Dashboard
       </Typography>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
       {/* Statistics */}
       {stats && (
@@ -190,61 +205,63 @@ function Admin() {
       )}
 
       {/* User Management */}
-      <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Typography variant="h6">👥 User Management</Typography>
-          <IconButton onClick={loadAdminData} size="small">
-            <RefreshIcon />
-          </IconButton>
-        </Box>
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                <TableCell>Email</TableCell>
-                <TableCell>Full Name</TableCell>
-                <TableCell align="center">Role</TableCell>
-                <TableCell align="center">Status</TableCell>
-                <TableCell align="right">Estimates</TableCell>
-                <TableCell align="center">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.full_name}</TableCell>
-                  <TableCell align="center">
-                    {user.is_admin ? (
-                      <Chip label="Admin" color="primary" size="small" />
-                    ) : (
-                      <Chip label="User" variant="outlined" size="small" />
-                    )}
-                  </TableCell>
-                  <TableCell align="center">
-                    {user.is_active ? (
-                      <Chip label="Active" color="success" size="small" />
-                    ) : (
-                      <Chip label="Inactive" variant="outlined" size="small" />
-                    )}
-                  </TableCell>
-                  <TableCell align="right">{user.total_estimates}</TableCell>
-                  <TableCell align="center">
-                    <Button
-                      startIcon={<VpnKeyIcon />}
-                      size="small"
-                      variant="outlined"
-                      onClick={() => handleOpenResetDialog(user)}
-                    >
-                      Reset Password
-                    </Button>
-                  </TableCell>
+      {users.length > 0 && (
+        <Box sx={{ mb: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">👥 User Management ({users.length})</Typography>
+            <IconButton onClick={loadAdminData} size="small" title="Refresh">
+              <RefreshIcon />
+            </IconButton>
+          </Box>
+          <TableContainer component={Paper}>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                  <TableCell>Email</TableCell>
+                  <TableCell>Full Name</TableCell>
+                  <TableCell align="center">Role</TableCell>
+                  <TableCell align="center">Status</TableCell>
+                  <TableCell align="right">Estimates</TableCell>
+                  <TableCell align="center">Actions</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
-      </Box>
+              </TableHead>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>{user.full_name}</TableCell>
+                    <TableCell align="center">
+                      {user.is_admin ? (
+                        <Chip label="Admin" color="primary" size="small" />
+                      ) : (
+                        <Chip label="User" variant="outlined" size="small" />
+                      )}
+                    </TableCell>
+                    <TableCell align="center">
+                      {user.is_active ? (
+                        <Chip label="Active" color="success" size="small" />
+                      ) : (
+                        <Chip label="Inactive" variant="outlined" size="small" />
+                      )}
+                    </TableCell>
+                    <TableCell align="right">{user.total_estimates}</TableCell>
+                    <TableCell align="center">
+                      <Button
+                        startIcon={<VpnKeyIcon />}
+                        size="small"
+                        variant="outlined"
+                        onClick={() => handleOpenResetDialog(user)}
+                      >
+                        Reset Password
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Box>
+      )}
 
       {/* Conflicting Estimates */}
       {conflicts.length > 0 && (
