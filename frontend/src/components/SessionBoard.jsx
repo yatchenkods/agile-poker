@@ -9,6 +9,8 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
@@ -23,6 +25,7 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
   const [currentUser, setCurrentUser] = useState(null);
   const [loadingEstimates, setLoadingEstimates] = useState(true);
   const [hoveredIssueId, setHoveredIssueId] = useState(null);
+  const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
 
   // Fetch current user and all estimates
   useEffect(() => {
@@ -100,6 +103,19 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
     );
   }
 
+  // Filter issues based on toggle
+  const filteredIssues = showOnlyUnestimated
+    ? issues.filter((issue) => {
+        const status = getIssueEstimateStatus(issue);
+        return !status.hasUserEstimate;
+      })
+    : issues;
+
+  const unestimatedCount = issues.filter((issue) => {
+    const status = getIssueEstimateStatus(issue);
+    return !status.hasUserEstimate;
+  }).length;
+
   // Header height for offset calculation
   const headerHeight = '56px'; // h6 variant height with padding
 
@@ -116,27 +132,68 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
           minHeight: 0
         }}
       >
-        {/* Sticky Header */}
+        {/* Sticky Header with Filter Toggle */}
         <Box
           sx={{
             position: 'sticky',
             top: 0,
             backgroundColor: 'white',
             zIndex: 10,
-            pb: 1.5,
+            pb: 1,
             mb: 0.5,
             borderBottom: '2px solid #e0e0e0',
           }}
         >
-          <Typography variant="h6" sx={{ mb: 0 }}>
-            📋 Issues ({issues.length})
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="h6" sx={{ mb: 0 }}>
+              📋 Issues ({filteredIssues.length})
+            </Typography>
+            {unestimatedCount > 0 && (
+              <Chip 
+                label={`${unestimatedCount} left`} 
+                size="small" 
+                color="warning" 
+                variant="outlined"
+              />
+            )}
+          </Box>
+          
+          {/* Filter Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={showOnlyUnestimated}
+                onChange={(e) => setShowOnlyUnestimated(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                Only unestimated
+              </Typography>
+            }
+            sx={{ m: 0 }}
+          />
         </Box>
         
-        {issues.length === 0 ? (
+        {filteredIssues.length === 0 ? (
           <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, textAlign: 'center' }}>
-            <Typography color="textSecondary">No issues in this session yet.</Typography>
-            <Typography variant="caption" color="textSecondary">Click "Add Issues" to import tasks.</Typography>
+            {showOnlyUnestimated ? (
+              <>
+                <Typography color="success.main" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  ✅ All estimated!
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  You've estimated all issues in this session.
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Typography color="textSecondary">No issues in this session yet.</Typography>
+                <Typography variant="caption" color="textSecondary">Click "Add Issues" to import tasks.</Typography>
+              </>
+            )}
           </Box>
         ) : (
           /* Scrollable Issues Container */
@@ -167,7 +224,7 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
               },
             }}
           >
-            {issues.map((issue) => {
+            {filteredIssues.map((issue) => {
               const status = getIssueEstimateStatus(issue);
               const isHovered = hoveredIssueId === issue.id;
 
