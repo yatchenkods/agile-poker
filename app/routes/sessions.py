@@ -60,11 +60,21 @@ async def create_session(
     return session
 
 
-@router.get("/", response_model=List[SessionResponse])
+@router.get("/", response_model=List[SessionDetailResponse])
 async def list_sessions(skip: int = 0, limit: int = 10, db: Session = Depends(get_db)):
-    """List all sessions"""
+    """List all sessions with full details including estimators"""
     sessions = session_service.get_sessions(db, skip=skip, limit=limit)
-    return sessions
+    # Convert enriched session dicts to SessionDetailResponse by fetching full models
+    from app.models.session import Session as SessionModel
+    from sqlalchemy.orm import joinedload
+    
+    db_sessions = db.query(SessionModel).options(
+        joinedload(SessionModel.participants),
+        joinedload(SessionModel.estimators),
+        joinedload(SessionModel.issues)
+    ).offset(skip).limit(limit).all()
+    
+    return [session_service._enrich_session_detail(session) for session in db_sessions]
 
 
 @router.get("/{session_id}", response_model=SessionDetailResponse)
@@ -73,7 +83,7 @@ async def get_session(session_id: int, db: Session = Depends(get_db)):
     session = session_service.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
-    return session
+    return session_service._enrich_session_detail(session)
 
 
 @router.put("/{session_id}", response_model=SessionResponse)
