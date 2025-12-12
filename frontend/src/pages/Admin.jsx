@@ -39,6 +39,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
 import SecurityIcon from '@mui/icons-material/Security';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { api } from '../services/api';
 
 function Admin() {
@@ -57,6 +58,8 @@ function Admin() {
   const [estimationStats, setEstimationStats] = useState([]);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [issueEstimates, setIssueEstimates] = useState({});
+  const [issueSessionEstimators, setIssueSessionEstimators] = useState({});
+  const [sessions, setSessions] = useState([]);
 
   // Reset Password Dialog State
   const [resetDialog, setResetDialog] = useState(false);
@@ -119,6 +122,13 @@ function Admin() {
       setLoading(true);
       setError(null);
 
+      // Load sessions FIRST
+      const sessionsRes = await api.get('/sessions/?limit=1000');
+      const sessionsData = sessionsRes.data && Array.isArray(sessionsRes.data) ? sessionsRes.data : [];
+      setSessions(sessionsData);
+      console.log('Loaded sessions:', sessionsData);
+
+      // Then load other data in parallel
       const [statsRes, usersRes, issuesRes, estimationRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/users-stats'),
@@ -143,8 +153,8 @@ function Admin() {
 
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
-        // Load estimates for each issue
-        await loadIssueEstimates(issuesRes.data);
+        // Load estimates using the sessions data we already loaded
+        await loadIssueEstimates(issuesRes.data, sessionsData);
       }
 
       setEstimationStats(estimationRes.data || []);
@@ -156,23 +166,39 @@ function Admin() {
     }
   };
 
-  const loadIssueEstimates = async (issuesList) => {
+  const loadIssueEstimates = async (issuesList, sessionsData) => {
     try {
       const estimatesMap = {};
+      const sessionEstimatorsMap = {};
       
       for (const issue of issuesList) {
         try {
-          const res = await api.get(`/estimates/`, {
+          // Load estimates for this issue
+          const estimatesRes = await api.get(`/estimates/`, {
             params: { issue_id: issue.id },
           });
-          estimatesMap[issue.id] = res.data || [];
+          estimatesMap[issue.id] = estimatesRes.data || [];
+          console.log(`Estimates for issue ${issue.id}:`, estimatesRes.data);
+
+          // Find the session for this issue and get its estimators
+          const issueSession = sessionsData.find(s => s.id === issue.session_id);
+          if (issueSession && issueSession.estimators) {
+            sessionEstimatorsMap[issue.id] = issueSession.estimators;
+            console.log(`Session estimators for issue ${issue.id}:`, issueSession.estimators);
+          } else {
+            console.log(`No session found for issue ${issue.id} (session_id: ${issue.session_id})`);
+            sessionEstimatorsMap[issue.id] = [];
+          }
         } catch (err) {
           console.error(`Failed to load estimates for issue ${issue.id}:`, err);
           estimatesMap[issue.id] = [];
+          sessionEstimatorsMap[issue.id] = [];
         }
       }
       
+      console.log('Final sessionEstimatorsMap:', sessionEstimatorsMap);
       setIssueEstimates(estimatesMap);
+      setIssueSessionEstimators(sessionEstimatorsMap);
     } catch (err) {
       console.error('Failed to load issue estimates:', err);
     }
@@ -447,42 +473,62 @@ function Admin() {
     return user ? user.full_name : `User #${userId}`;
   };
 
+  const getSessionName = (sessionId) => {
+    const session = sessions.find((s) => s.id === sessionId);
+    return session ? session.name : 'Unknown Session';
+  };
+
   const getAvatarColor = (userId) => {
     const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'];
     return colors[userId % colors.length];
   };
 
-  const renderEstimates = (estimates) => {
-    if (!estimates || estimates.length === 0) {
-      return <Typography variant="caption">No estimates</Typography>;
+  const renderEstimates = (issueId, estimates, allEstimators) => {
+    // Get estimators who have submitted (from estimates array)
+    const estimatedUserIds = estimates.map(e => e.user_id);
+    
+    // Get all estimators for this issue's session
+    const sessionEstimators = allEstimators || [];
+    
+    if (sessionEstimators.length === 0) {
+      return <Typography variant="caption">No estimators assigned</Typography>;
     }
 
     return (
-      <AvatarGroup max={6} sx={{ justifyContent: 'flex-start' }}>
-        {estimates.map((est) => {
-          const isJoker = est.is_joker;
-          const displayValue = isJoker ? 'J' : est.story_points;
-          const userName = getUserName(est.user_id);
-          const avatarColor = getAvatarColor(est.user_id);
+      <AvatarGroup max={8} sx={{ justifyContent: 'flex-start' }}>
+        {sessionEstimators.map((estimator) => {
+          // Find if this estimator has submitted an estimate
+          const estimate = estimates.find(e => e.user_id === estimator.id);
+          const hasEstimate = estimate !== undefined;
+          
+          const isJoker = estimate?.is_joker;
+          const displayValue = isJoker ? 'J' : (estimate?.story_points || '?');
+          const userName = estimator.full_name || `User #${estimator.id}`;
+          const avatarColor = getAvatarColor(estimator.id);
 
           return (
             <Tooltip
-              key={est.id}
-              title={`${userName}: ${isJoker ? 'Joker (abstain)' : displayValue + ' points'}`}
+              key={estimator.id}
+              title={`${userName}: ${hasEstimate ? (isJoker ? 'Joker (abstain)' : displayValue + ' points') : 'Awaiting estimate'}`}
               arrow
             >
               <Avatar
                 sx={{
                   width: 40,
                   height: 40,
-                  backgroundColor: isJoker ? '#FFD700' : avatarColor,
-                  color: isJoker ? '#000' : '#fff',
+                  backgroundColor: hasEstimate 
+                    ? (isJoker ? '#FFD700' : avatarColor)
+                    : '#CCCCCC',
+                  color: hasEstimate
+                    ? (isJoker ? '#000' : '#fff')
+                    : '#666',
                   fontWeight: 'bold',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
                   border: '2px solid white',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                   transition: 'transform 0.2s',
+                  opacity: hasEstimate ? 1 : 0.6,
                   '&:hover': {
                     transform: 'scale(1.15)',
                   },
@@ -978,13 +1024,14 @@ function Admin() {
                         <strong>Status</strong>
                       </TableCell>
                       <TableCell>
-                        <strong>User Estimates</strong>
+                        <strong>All Estimators</strong>
                       </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredIssues.map((issue) => {
                       const estimates = issueEstimates[issue.id] || [];
+                      const sessionEstimators = issueSessionEstimators[issue.id] || [];
 
                       return (
                         <TableRow
@@ -1005,7 +1052,7 @@ function Admin() {
                           </TableCell>
                           <TableCell>{issue.title}</TableCell>
                           <TableCell>
-                            {issue.session_name || 'N/A'}
+                            {getSessionName(issue.session_id)}
                           </TableCell>
                           <TableCell align="center">
                             {issue.story_points ? (
@@ -1037,7 +1084,7 @@ function Admin() {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ py: 1 }}>
-                              {renderEstimates(estimates)}
+                              {renderEstimates(issue.id, estimates, sessionEstimators)}
                             </Box>
                           </TableCell>
                         </TableRow>
