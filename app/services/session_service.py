@@ -1,7 +1,7 @@
 """Planning Poker session service"""
 
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from app.models.session import Session as SessionModel, SessionStatus, session_users
 from app.schemas.session import SessionCreate, SessionUpdate
 
@@ -52,13 +52,21 @@ class SessionService:
 
     @staticmethod
     def get_session(db: Session, session_id: int) -> SessionModel:
-        """Get session by ID (returns ORM object)"""
-        return db.query(SessionModel).filter(SessionModel.id == session_id).first()
+        """Get session by ID (returns ORM object with eager-loaded relationships)"""
+        return db.query(SessionModel).options(
+            joinedload(SessionModel.participants),
+            joinedload(SessionModel.estimators),
+            joinedload(SessionModel.issues)
+        ).filter(SessionModel.id == session_id).first()
 
     @staticmethod
     def get_sessions(db: Session, skip: int = 0, limit: int = 10) -> list[dict]:
-        """Get list of sessions with computed fields"""
-        sessions = db.query(SessionModel).offset(skip).limit(limit).all()
+        """Get list of sessions with computed fields and eager-loaded relationships"""
+        sessions = db.query(SessionModel).options(
+            joinedload(SessionModel.participants),
+            joinedload(SessionModel.estimators),
+            joinedload(SessionModel.issues)
+        ).offset(skip).limit(limit).all()
         return [SessionService._enrich_session(session) for session in sessions]
 
     @staticmethod
