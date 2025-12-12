@@ -440,7 +440,7 @@ function Admin() {
     setRoleLoading(true);
 
     try {
-      await api.put(`/admin/users/${userToChangeRole.id}/role`, {
+      await api.put(`/users/${userToChangeRole.id}`, {
         is_admin: !userToChangeRole.is_admin,
       });
 
