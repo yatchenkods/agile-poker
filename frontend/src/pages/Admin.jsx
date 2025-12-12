@@ -27,10 +27,7 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
-  Popover,
-  Stack,
 } from '@mui/material';
-import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -42,21 +39,22 @@ import LockIcon from '@mui/icons-material/Lock';
 import { api } from '../services/api';
 
 function Admin() {
+  // Auth & UI State
   const [currentUser, setCurrentUser] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [stats, setStats] = useState(null);
-  const [issues, setIssues] = useState([]);
-  const [issueEstimates, setIssueEstimates] = useState({});
-  const [users, setUsers] = useState([]);
-  const [estimationStats, setEstimationStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [permissionError, setPermissionError] = useState(null);
-  const [estimatesPopover, setEstimatesPopover] = useState(null);
-  const [selectedIssueEstimates, setSelectedIssueEstimates] = useState(null);
-  
+
+  // Data State
+  const [stats, setStats] = useState(null);
+  const [users, setUsers] = useState([]);
+  const [issues, setIssues] = useState([]);
+  const [estimationStats, setEstimationStats] = useState([]);
+  const [showOnlyPending, setShowOnlyPending] = useState(false);
+
+  // Reset Password Dialog State
   const [resetDialog, setResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
@@ -65,6 +63,7 @@ function Admin() {
   const [resetMessage, setResetMessage] = useState(null);
   const [resetError, setResetError] = useState(null);
 
+  // Add User Dialog State
   const [addUserDialog, setAddUserDialog] = useState(false);
   const [newUserData, setNewUserData] = useState({
     email: '',
@@ -75,6 +74,7 @@ function Admin() {
   const [addUserError, setAddUserError] = useState(null);
   const [addUserMessage, setAddUserMessage] = useState(null);
 
+  // Delete User Dialog State
   const [deleteDialog, setDeleteDialog] = useState(false);
   const [userToDelete, setUserToDelete] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
@@ -89,13 +89,13 @@ function Admin() {
       const userRes = await api.get('/auth/me');
       setCurrentUser(userRes.data);
       setIsAdmin(userRes.data.is_admin);
-      
+
       if (!userRes.data.is_admin) {
         setError('Access denied. Admin rights required.');
         setLoading(false);
         return;
       }
-      
+
       await loadAdminData();
     } catch (err) {
       console.error('Failed to check admin access:', err);
@@ -109,10 +109,15 @@ function Admin() {
       setLoading(true);
       setError(null);
 
-      const statsRes = await api.get('/admin/stats');
+      const [statsRes, usersRes, issuesRes, estimationRes] = await Promise.all([
+        api.get('/admin/stats'),
+        api.get('/admin/users-stats'),
+        api.get('/issues/'),
+        api.get('/admin/conflicting-estimates'),
+      ]);
+
       setStats(statsRes.data);
 
-      const usersRes = await api.get('/admin/users-stats');
       if (usersRes.data && Array.isArray(usersRes.data)) {
         const userList = usersRes.data.map((stat) => ({
           id: stat.user_id,
@@ -126,14 +131,10 @@ function Admin() {
         setUsers(userList);
       }
 
-      const issuesRes = await api.get('/issues/');
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
-        // Load estimates for each issue
-        loadIssueEstimates(issuesRes.data);
       }
 
-      const estimationRes = await api.get('/admin/conflicting-estimates');
       setEstimationStats(estimationRes.data || []);
     } catch (err) {
       console.error('Failed to load admin data:', err);
@@ -141,48 +142,6 @@ function Admin() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const loadIssueEstimates = async (issuesList) => {
-    const estimatesMap = {};
-    
-    for (const issue of issuesList) {
-      try {
-        const estimatesRes = await api.get('/estimates/', {
-          params: { issue_id: issue.id }
-        });
-        estimatesMap[issue.id] = estimatesRes.data || [];
-      } catch (err) {
-        console.error(`Failed to load estimates for issue ${issue.id}:`, err);
-        estimatesMap[issue.id] = [];
-      }
-    }
-    
-    setIssueEstimates(estimatesMap);
-  };
-
-  const handleShowEstimates = (event, issue) => {
-    const estimates = issueEstimates[issue.id] || [];
-    setSelectedIssueEstimates({
-      issue,
-      estimates,
-      userMap: users.reduce((acc, u) => ({ ...acc, [u.id]: u }), {})
-    });
-    setEstimatesPopover(event.currentTarget);
-  };
-
-  const handleCloseEstimatesPopover = () => {
-    setEstimatesPopover(null);
-    setSelectedIssueEstimates(null);
-  };
-
-  const getEstimateColor = (estimates) => {
-    if (estimates.length === 0) return 'default';
-    const points = estimates.map(e => e.story_points);
-    const unique = new Set(points);
-    if (unique.size === 1) return 'success';
-    if (unique.size <= 2) return 'warning';
-    return 'error';
   };
 
   const checkPermission = () => {
@@ -194,9 +153,10 @@ function Admin() {
     return true;
   };
 
+  // Password Reset Handlers
   const handleOpenResetDialog = (user) => {
     if (!checkPermission()) return;
-    
+
     setSelectedUser(user);
     setNewPassword('');
     setConfirmPassword('');
@@ -212,7 +172,7 @@ function Admin() {
 
   const handleResetPassword = async () => {
     if (!checkPermission()) return;
-    
+
     setResetError(null);
     setResetMessage(null);
 
@@ -256,9 +216,10 @@ function Admin() {
     }
   };
 
+  // Add User Handlers
   const handleOpenAddUserDialog = () => {
     if (!checkPermission()) return;
-    
+
     setNewUserData({ email: '', full_name: '', password: '' });
     setAddUserError(null);
     setAddUserMessage(null);
@@ -272,7 +233,7 @@ function Admin() {
 
   const handleAddUser = async () => {
     if (!checkPermission()) return;
-    
+
     setAddUserError(null);
     setAddUserMessage(null);
 
@@ -317,9 +278,10 @@ function Admin() {
     }
   };
 
+  // Delete User Handlers
   const handleOpenDeleteDialog = (user) => {
     if (!checkPermission()) return;
-    
+
     setUserToDelete(user);
     setDeleteError(null);
     setDeleteDialog(true);
@@ -332,7 +294,7 @@ function Admin() {
 
   const handleDeleteUser = async () => {
     if (!checkPermission()) return;
-    
+
     setDeleteError(null);
     setDeleteLoading(true);
 
@@ -355,6 +317,7 @@ function Admin() {
     }
   };
 
+  // Toggle User Status Handler
   const handleToggleUserStatus = async (user) => {
     if (currentUser && user.id === currentUser.id) {
       setPermissionError('You cannot change your own status to prevent self-lockout.');
@@ -363,26 +326,19 @@ function Admin() {
     }
 
     if (!checkPermission()) return;
-    
+
     try {
-      console.log(`Toggling user ${user.id} status to ${!user.is_active}`);
-      const updatedUsers = users.map(u => {
-        if (u.id === user.id) {
-          return { ...u, is_active: !u.is_active };
-        }
-        return u;
-      });
+      const updatedUsers = users.map((u) =>
+        u.id === user.id ? { ...u, is_active: !u.is_active } : u
+      );
       setUsers(updatedUsers);
 
       await api.put(`/users/${user.id}`, {
         is_active: !user.is_active,
       });
-      console.log('User status updated successfully');
     } catch (err) {
       console.error('Failed to update user status:', err);
-      console.error('Error response:', err.response?.data);
-      console.error('Error status:', err.response?.status);
-      
+
       if (err.response?.status === 403) {
         setPermissionError('Permission denied. Admin rights required.');
       } else if (err.response?.data?.detail) {
@@ -391,19 +347,26 @@ function Admin() {
         setPermissionError(`Failed to update user status: ${err.message}`);
       }
       setTimeout(() => setPermissionError(null), 6000);
-      
+
       // Revert changes on error
       loadAdminData();
     }
   };
 
-  const filteredIssues = showOnlyPending 
-    ? issues.filter(issue => !issue.is_estimated)
+  const filteredIssues = showOnlyPending
+    ? issues.filter((issue) => !issue.is_estimated)
     : issues;
 
   if (!isAdmin && !loading) {
     return (
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: '400px',
+        }}
+      >
         <Card sx={{ maxWidth: 400, textAlign: 'center' }}>
           <CardContent>
             <LockIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
@@ -421,7 +384,14 @@ function Admin() {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '400px',
+        }}
+      >
         <CircularProgress />
       </Box>
     );
@@ -429,13 +399,22 @@ function Admin() {
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+      {/* Header */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mb: 3,
+        }}
+      >
         <Typography variant="h4">🛠️ Admin Panel</Typography>
-        <IconButton onClick={loadAdminData} title="Refresh">
+        <IconButton onClick={loadAdminData} title="Refresh data">
           <RefreshIcon />
         </IconButton>
       </Box>
 
+      {/* Global Alerts */}
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
@@ -454,6 +433,7 @@ function Admin() {
         </Alert>
       )}
 
+      {/* Tab Navigation */}
       <Paper sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
           <Tab icon={<BarChartIcon />} iconPosition="start" label="Statistics" />
@@ -462,6 +442,7 @@ function Admin() {
         </Tabs>
       </Paper>
 
+      {/* Tab 0: Statistics */}
       {activeTab === 0 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
@@ -522,27 +503,41 @@ function Admin() {
               <Table>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: '#fff3e0' }}>
-                    <TableCell><strong>Issue</strong></TableCell>
-                    <TableCell><strong>Title</strong></TableCell>
-                    <TableCell align="center"><strong>Estimates</strong></TableCell>
-                    <TableCell align="center"><strong>Range</strong></TableCell>
-                    <TableCell align="center"><strong>Variance</strong></TableCell>
+                    <TableCell>
+                      <strong>Issue</strong>
+                    </TableCell>
+                    <TableCell>
+                      <strong>Title</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Estimates</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Range</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Variance</strong>
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {estimationStats.map((stat) => (
                     <TableRow key={stat.issue_id}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>{stat.jira_key}</TableCell>
+                      <TableCell sx={{ fontWeight: 'bold' }}>
+                        {stat.jira_key}
+                      </TableCell>
                       <TableCell>{stat.title}</TableCell>
                       <TableCell align="center">
                         <Chip label={stat.estimates_count} size="small" />
                       </TableCell>
-                      <TableCell align="center">{stat.min_points} - {stat.max_points}</TableCell>
                       <TableCell align="center">
-                        <Chip 
-                          label={stat.variance} 
+                        {stat.min_points} - {stat.max_points}
+                      </TableCell>
+                      <TableCell align="center">
+                        <Chip
+                          label={stat.variance}
                           color={stat.variance > 4 ? 'error' : 'warning'}
-                          size="small" 
+                          size="small"
                         />
                       </TableCell>
                     </TableRow>
@@ -556,9 +551,17 @@ function Admin() {
         </Box>
       )}
 
+      {/* Tab 1: Users */}
       {activeTab === 1 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2,
+            }}
+          >
             <Typography variant="h6">👥 User Management</Typography>
             <Tooltip title={isAdmin ? 'Add new user' : 'Admin rights required'}>
               <span>
@@ -579,67 +582,145 @@ function Admin() {
               <Table>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                    <TableCell><strong>Email</strong></TableCell>
-                    <TableCell><strong>Full Name</strong></TableCell>
-                    <TableCell align="center"><strong>Role</strong></TableCell>
-                    <TableCell align="center"><strong>Status</strong></TableCell>
-                    <TableCell align="right"><strong>Estimates</strong></TableCell>
-                    <TableCell align="right"><strong>Sessions</strong></TableCell>
-                    <TableCell align="center"><strong>Actions</strong></TableCell>
+                    <TableCell>
+                      <strong>Email</strong>
+                    </TableCell>
+                    <TableCell>
+                      <strong>Full Name</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Role</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Status</strong>
+                    </TableCell>
+                    <TableCell align="right">
+                      <strong>Estimates</strong>
+                    </TableCell>
+                    <TableCell align="right">
+                      <strong>Sessions</strong>
+                    </TableCell>
+                    <TableCell align="center">
+                      <strong>Actions</strong>
+                    </TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {users.map((user) => {
-                    const isCurrentUser = currentUser && user.id === currentUser.id;
-                    
+                    const isCurrentUser =
+                      currentUser && user.id === currentUser.id;
+
                     return (
-                      <TableRow key={user.id} sx={{ opacity: isCurrentUser ? 0.7 : 1 }}>
-                        <TableCell>{user.email}{isCurrentUser && ' 👤 (You)'}</TableCell>
+                      <TableRow
+                        key={user.id}
+                        sx={{ opacity: isCurrentUser ? 0.7 : 1 }}
+                      >
+                        <TableCell>
+                          {user.email}
+                          {isCurrentUser && ' 👤 (You)'}
+                        </TableCell>
                         <TableCell>{user.full_name}</TableCell>
                         <TableCell align="center">
                           {user.is_admin ? (
-                            <Chip label="Admin" color="primary" size="small" />
+                            <Chip
+                              label="Admin"
+                              color="primary"
+                              size="small"
+                            />
                           ) : (
-                            <Chip label="User" variant="outlined" size="small" />
+                            <Chip
+                              label="User"
+                              variant="outlined"
+                              size="small"
+                            />
                           )}
                         </TableCell>
                         <TableCell align="center">
-                          <Tooltip title={isCurrentUser ? 'You cannot change your own status' : isAdmin ? 'Click to toggle status' : 'Admin rights required'}>
+                          <Tooltip
+                            title={
+                              isCurrentUser
+                                ? 'You cannot change your own status'
+                                : isAdmin
+                                ? 'Click to toggle status'
+                                : 'Admin rights required'
+                            }
+                          >
                             <Chip
-                              label={user.is_active ? 'Active' : 'Inactive'}
-                              color={user.is_active ? 'success' : 'default'}
+                              label={
+                                user.is_active ? 'Active' : 'Inactive'
+                              }
+                              color={
+                                user.is_active ? 'success' : 'default'
+                              }
                               size="small"
-                              onClick={() => !isCurrentUser && handleToggleUserStatus(user)}
-                              sx={{ 
-                                cursor: isCurrentUser ? 'not-allowed' : isAdmin ? 'pointer' : 'not-allowed', 
-                                opacity: isCurrentUser ? 0.5 : isAdmin ? 1 : 0.6 
+                              onClick={() =>
+                                !isCurrentUser &&
+                                handleToggleUserStatus(user)
+                              }
+                              sx={{
+                                cursor: isCurrentUser
+                                  ? 'not-allowed'
+                                  : isAdmin
+                                  ? 'pointer'
+                                  : 'not-allowed',
+                                opacity: isCurrentUser
+                                  ? 0.5
+                                  : isAdmin
+                                  ? 1
+                                  : 0.6,
                               }}
                             />
                           </Tooltip>
                         </TableCell>
-                        <TableCell align="right">{user.total_estimates}</TableCell>
-                        <TableCell align="right">{user.participated_sessions}</TableCell>
+                        <TableCell align="right">
+                          {user.total_estimates}
+                        </TableCell>
+                        <TableCell align="right">
+                          {user.participated_sessions}
+                        </TableCell>
                         <TableCell align="center">
-                          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                            <Tooltip title={isAdmin ? 'Reset password' : 'Admin rights required'}>
+                          <Box
+                            sx={{
+                              display: 'flex',
+                              gap: 0.5,
+                              justifyContent: 'center',
+                            }}
+                          >
+                            <Tooltip
+                              title={
+                                isAdmin
+                                  ? 'Reset password'
+                                  : 'Admin rights required'
+                              }
+                            >
                               <span>
                                 <Button
                                   startIcon={<VpnKeyIcon />}
                                   size="small"
                                   variant="outlined"
-                                  onClick={() => handleOpenResetDialog(user)}
+                                  onClick={() =>
+                                    handleOpenResetDialog(user)
+                                  }
                                   disabled={!isAdmin}
                                 >
                                   Reset
                                 </Button>
                               </span>
                             </Tooltip>
-                            <Tooltip title={isAdmin ? 'Delete user' : 'Admin rights required'}>
+                            <Tooltip
+                              title={
+                                isAdmin
+                                  ? 'Delete user'
+                                  : 'Admin rights required'
+                              }
+                            >
                               <span>
                                 <IconButton
                                   size="small"
                                   color="error"
-                                  onClick={() => handleOpenDeleteDialog(user)}
+                                  onClick={() =>
+                                    handleOpenDeleteDialog(user)
+                                  }
                                   disabled={!isAdmin}
                                 >
                                   <DeleteIcon fontSize="small" />
@@ -660,9 +741,17 @@ function Admin() {
         </Box>
       )}
 
+      {/* Tab 2: Issues */}
       {activeTab === 2 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              mb: 2,
+            }}
+          >
             <Typography variant="h6">📋 Issue Management</Typography>
             <FormControlLabel
               control={
@@ -678,143 +767,122 @@ function Admin() {
 
           {filteredIssues.length > 0 ? (
             <Box>
-              <Typography variant="caption" color="textSecondary" sx={{ mb: 1, display: 'block' }}>
+              <Typography
+                variant="caption"
+                color="textSecondary"
+                sx={{ mb: 1, display: 'block' }}
+              >
                 Showing {filteredIssues.length} of {issues.length} issues
-                {showOnlyPending && ` (pending: ${issues.filter(i => !i.is_estimated).length})`}
+                {showOnlyPending &&
+                  ` (pending: ${issues.filter((i) => !i.is_estimated).length})`}
               </Typography>
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
                     <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                      <TableCell><strong>Issue Key</strong></TableCell>
-                      <TableCell><strong>Title</strong></TableCell>
-                      <TableCell><strong>Session</strong></TableCell>
-                      <TableCell align="center"><strong>User Estimates</strong></TableCell>
-                      <TableCell align="center"><strong>Current Estimate</strong></TableCell>
-                      <TableCell align="center"><strong>Status</strong></TableCell>
+                      <TableCell>
+                        <strong>Issue Key</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Title</strong>
+                      </TableCell>
+                      <TableCell>
+                        <strong>Session</strong>
+                      </TableCell>
+                      <TableCell align="center">
+                        <strong>Current Estimate</strong>
+                      </TableCell>
+                      <TableCell align="center">
+                        <strong>Status</strong>
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredIssues.map((issue) => {
-                      const estimates = issueEstimates[issue.id] || [];
-                      const estimateColor = getEstimateColor(estimates);
-                      
-                      return (
-                        <TableRow 
-                          key={issue.id}
-                          sx={{
-                            backgroundColor: !issue.is_estimated ? '#fff9c4' : 'inherit',
-                            '&:hover': {
-                              backgroundColor: !issue.is_estimated ? '#ffeb3b' : '#f5f5f5'
-                            }
-                          }}
-                        >
-                          <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
-                          <TableCell>{issue.title}</TableCell>
-                          <TableCell>{issue.session_name || 'N/A'}</TableCell>
-                          <TableCell align="center">
-                            <Tooltip title="Click to see who voted for each estimate">
-                              <Chip
-                                label={`${estimates.length} votes`}
-                                color={estimateColor}
-                                variant="outlined"
-                                size="small"
-                                onClick={(e) => handleShowEstimates(e, issue)}
-                                sx={{ cursor: 'pointer' }}
-                              />
-                            </Tooltip>
-                          </TableCell>
-                          <TableCell align="center">
-                            {issue.story_points ? (
-                              <Chip label={`${issue.story_points} pts`} color="success" />
-                            ) : (
-                              <Chip label="Not set" variant="outlined" />
-                            )}
-                          </TableCell>
-                          <TableCell align="center">
-                            {issue.is_estimated ? (
-                              <Chip label="Estimated" color="success" size="small" />
-                            ) : (
-                              <Chip label="Pending" color="warning" size="small" />
-                            )}
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
+                    {filteredIssues.map((issue) => (
+                      <TableRow
+                        key={issue.id}
+                        sx={{
+                          backgroundColor: !issue.is_estimated
+                            ? '#fff9c4'
+                            : 'inherit',
+                          '&:hover': {
+                            backgroundColor: !issue.is_estimated
+                              ? '#ffeb3b'
+                              : '#f5f5f5',
+                          },
+                        }}
+                      >
+                        <TableCell sx={{ fontWeight: 'bold' }}>
+                          {issue.jira_key}
+                        </TableCell>
+                        <TableCell>{issue.title}</TableCell>
+                        <TableCell>
+                          {issue.session_name || 'N/A'}
+                        </TableCell>
+                        <TableCell align="center">
+                          {issue.story_points ? (
+                            <Chip
+                              label={`${issue.story_points} pts`}
+                              color="success"
+                            />
+                          ) : (
+                            <Chip label="Not set" variant="outlined" />
+                          )}
+                        </TableCell>
+                        <TableCell align="center">
+                          {issue.is_estimated ? (
+                            <Chip
+                              label="Estimated"
+                              color="success"
+                              size="small"
+                            />
+                          ) : (
+                            <Chip
+                              label="Pending"
+                              color="warning"
+                              size="small"
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </TableContainer>
             </Box>
           ) : (
             <Alert severity="info">
-              {showOnlyPending 
-                ? 'All issues have been estimated! 🎉' 
-                : 'No issues found'
-              }
+              {showOnlyPending
+                ? 'All issues have been estimated! 🎉'
+                : 'No issues found'}
             </Alert>
           )}
         </Box>
       )}
 
-      <Popover
-        open={Boolean(estimatesPopover)}
-        anchorEl={estimatesPopover}
-        onClose={handleCloseEstimatesPopover}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      {/* Reset Password Dialog */}
+      <Dialog
+        open={resetDialog}
+        onClose={handleCloseResetDialog}
+        maxWidth="sm"
+        fullWidth
       >
-        {selectedIssueEstimates && (
-          <Box sx={{ p: 2, minWidth: 300 }}>
-            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
-              {selectedIssueEstimates.issue.jira_key}: {selectedIssueEstimates.issue.title}
-            </Typography>
-            
-            {selectedIssueEstimates.estimates.length > 0 ? (
-              <Stack spacing={1}>
-                {selectedIssueEstimates.estimates.map((estimate, idx) => {
-                  const user = selectedIssueEstimates.userMap[estimate.user_id];
-                  return (
-                    <Box
-                      key={idx}
-                      sx={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                        p: 1,
-                        backgroundColor: '#f5f5f5',
-                        borderRadius: 1,
-                      }}
-                    >
-                      <Typography variant="body2">
-                        {user?.full_name || 'Unknown'}
-                      </Typography>
-                      <Chip
-                        label={`${estimate.story_points} pts`}
-                        size="small"
-                        color="primary"
-                        variant="outlined"
-                      />
-                    </Box>
-                  );
-                })}
-              </Stack>
-            ) : (
-              <Typography variant="body2" color="textSecondary">
-                No estimates yet
-              </Typography>
-            )}
-          </Box>
-        )}
-      </Popover>
-
-      <Dialog open={resetDialog} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
         <DialogTitle>🔐 Reset Password</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Typography variant="body2" sx={{ mb: 2 }}>
             Resetting password for: <strong>{selectedUser?.email}</strong>
           </Typography>
 
-          {resetMessage && <Alert severity="success" sx={{ mb: 2 }}>{resetMessage}</Alert>}
-          {resetError && <Alert severity="error" sx={{ mb: 2 }}>{resetError}</Alert>}
+          {resetMessage && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {resetMessage}
+            </Alert>
+          )}
+          {resetError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {resetError}
+            </Alert>
+          )}
 
           <TextField
             fullWidth
@@ -837,30 +905,50 @@ function Admin() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseResetDialog} disabled={resetLoading}>Cancel</Button>
+          <Button onClick={handleCloseResetDialog} disabled={resetLoading}>
+            Cancel
+          </Button>
           <Button
             onClick={handleResetPassword}
             variant="contained"
             disabled={resetLoading}
-            startIcon={resetLoading ? <CircularProgress size={20} /> : <VpnKeyIcon />}
+            startIcon={
+              resetLoading ? <CircularProgress size={20} /> : <VpnKeyIcon />
+            }
           >
             {resetLoading ? 'Resetting...' : 'Reset Password'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={addUserDialog} onClose={handleCloseAddUserDialog} maxWidth="sm" fullWidth>
+      {/* Add User Dialog */}
+      <Dialog
+        open={addUserDialog}
+        onClose={handleCloseAddUserDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>👥 Add New User</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
-          {addUserMessage && <Alert severity="success" sx={{ mb: 2 }}>{addUserMessage}</Alert>}
-          {addUserError && <Alert severity="error" sx={{ mb: 2 }}>{addUserError}</Alert>}
+          {addUserMessage && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {addUserMessage}
+            </Alert>
+          )}
+          {addUserError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {addUserError}
+            </Alert>
+          )}
 
           <TextField
             fullWidth
             label="Email"
             type="email"
             value={newUserData.email}
-            onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+            onChange={(e) =>
+              setNewUserData({ ...newUserData, email: e.target.value })
+            }
             disabled={addUserLoading}
             margin="normal"
             placeholder="user@example.com"
@@ -869,7 +957,9 @@ function Admin() {
             fullWidth
             label="Full Name"
             value={newUserData.full_name}
-            onChange={(e) => setNewUserData({ ...newUserData, full_name: e.target.value })}
+            onChange={(e) =>
+              setNewUserData({ ...newUserData, full_name: e.target.value })
+            }
             disabled={addUserLoading}
             margin="normal"
             placeholder="John Doe"
@@ -879,44 +969,73 @@ function Admin() {
             label="Password"
             type="password"
             value={newUserData.password}
-            onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+            onChange={(e) =>
+              setNewUserData({ ...newUserData, password: e.target.value })
+            }
             disabled={addUserLoading}
             margin="normal"
             placeholder="Minimum 8 characters"
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseAddUserDialog} disabled={addUserLoading}>Cancel</Button>
+          <Button onClick={handleCloseAddUserDialog} disabled={addUserLoading}>
+            Cancel
+          </Button>
           <Button
             onClick={handleAddUser}
             variant="contained"
             disabled={addUserLoading}
-            startIcon={addUserLoading ? <CircularProgress size={20} /> : <AddIcon />}
+            startIcon={
+              addUserLoading ? <CircularProgress size={20} /> : <AddIcon />
+            }
           >
             {addUserLoading ? 'Creating...' : 'Create User'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={deleteDialog} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
+      {/* Delete User Dialog */}
+      <Dialog
+        open={deleteDialog}
+        onClose={handleCloseDeleteDialog}
+        maxWidth="sm"
+        fullWidth
+      >
         <DialogTitle>⚠️ Delete User</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
-          {deleteError && <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert>}
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
           <Typography>
-            Are you sure you want to delete user <strong>{userToDelete?.email}</strong>?
+            Are you sure you want to delete user{' '}
+            <strong>{userToDelete?.email}</strong>?
           </Typography>
-          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+          <Typography
+            variant="caption"
+            color="error"
+            sx={{ display: 'block', mt: 1 }}
+          >
             This action cannot be undone.
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseDeleteDialog} disabled={deleteLoading}>Cancel</Button>
+          <Button onClick={handleCloseDeleteDialog} disabled={deleteLoading}>
+            Cancel
+          </Button>
           <Button
             onClick={handleDeleteUser}
             variant="contained"
             color="error"
             disabled={deleteLoading}
-            startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
+            startIcon={
+              deleteLoading ? (
+                <CircularProgress size={20} />
+              ) : (
+                <DeleteIcon />
+              )
+            }
           >
             {deleteLoading ? 'Deleting...' : 'Delete'}
           </Button>
