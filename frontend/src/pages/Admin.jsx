@@ -27,6 +27,7 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
+  Collapse,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
@@ -37,6 +38,8 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
 import SecurityIcon from '@mui/icons-material/Security';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { api } from '../services/api';
 
 function Admin() {
@@ -47,6 +50,7 @@ function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [permissionError, setPermissionError] = useState(null);
+  const [expandedIssue, setExpandedIssue] = useState(null);
 
   // Data State
   const [stats, setStats] = useState(null);
@@ -54,6 +58,7 @@ function Admin() {
   const [issues, setIssues] = useState([]);
   const [estimationStats, setEstimationStats] = useState([]);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
+  const [issueEstimates, setIssueEstimates] = useState({});
 
   // Reset Password Dialog State
   const [resetDialog, setResetDialog] = useState(false);
@@ -140,6 +145,8 @@ function Admin() {
 
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
+        // Load estimates for each issue
+        await loadIssueEstimates(issuesRes.data);
       }
 
       setEstimationStats(estimationRes.data || []);
@@ -148,6 +155,28 @@ function Admin() {
       setError(err.response?.data?.detail || 'Failed to load admin data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadIssueEstimates = async (issuesList) => {
+    try {
+      const estimatesMap = {};
+      
+      for (const issue of issuesList) {
+        try {
+          const res = await api.get(`/estimates/`, {
+            params: { issue_id: issue.id },
+          });
+          estimatesMap[issue.id] = res.data || [];
+        } catch (err) {
+          console.error(`Failed to load estimates for issue ${issue.id}:`, err);
+          estimatesMap[issue.id] = [];
+        }
+      }
+      
+      setIssueEstimates(estimatesMap);
+    } catch (err) {
+      console.error('Failed to load issue estimates:', err);
     }
   };
 
@@ -414,6 +443,18 @@ function Admin() {
   const filteredIssues = showOnlyPending
     ? issues.filter((issue) => !issue.is_estimated)
     : issues;
+
+  const getUserName = (userId) => {
+    const user = users.find((u) => u.id === userId);
+    return user ? user.full_name : `User #${userId}`;
+  };
+
+  const formatEstimate = (estimate) => {
+    if (estimate.is_joker) {
+      return { display: 'J', label: 'Joker (abstain)' };
+    }
+    return { display: estimate.story_points, label: `${estimate.story_points} points` };
+  };
 
   if (!isAdmin && !loading) {
     return (
@@ -895,57 +936,153 @@ function Admin() {
                       <TableCell align="center">
                         <strong>Status</strong>
                       </TableCell>
+                      <TableCell align="center">
+                        <strong>Estimates</strong>
+                      </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {filteredIssues.map((issue) => (
-                      <TableRow
-                        key={issue.id}
-                        sx={{
-                          backgroundColor: !issue.is_estimated
-                            ? '#fff9c4'
-                            : 'inherit',
-                          '&:hover': {
-                            backgroundColor: !issue.is_estimated
-                              ? '#ffeb3b'
-                              : '#f5f5f5',
-                          },
-                        }}
-                      >
-                        <TableCell sx={{ fontWeight: 'bold' }}>
-                          {issue.jira_key}
-                        </TableCell>
-                        <TableCell>{issue.title}</TableCell>
-                        <TableCell>
-                          {issue.session_name || 'N/A'}
-                        </TableCell>
-                        <TableCell align="center">
-                          {issue.story_points ? (
-                            <Chip
-                              label={`${issue.story_points} pts`}
-                              color="success"
-                            />
-                          ) : (
-                            <Chip label="Not set" variant="outlined" />
+                    {filteredIssues.map((issue) => {
+                      const estimates = issueEstimates[issue.id] || [];
+                      const isExpanded = expandedIssue === issue.id;
+
+                      return (
+                        <React.Fragment key={issue.id}>
+                          <TableRow
+                            sx={{
+                              backgroundColor: !issue.is_estimated
+                                ? '#fff9c4'
+                                : 'inherit',
+                              '&:hover': {
+                                backgroundColor: !issue.is_estimated
+                                  ? '#ffeb3b'
+                                  : '#f5f5f5',
+                              },
+                              cursor: estimates.length > 0 ? 'pointer' : 'default',
+                            }}
+                            onClick={() =>
+                              estimates.length > 0 &&
+                              setExpandedIssue(
+                                isExpanded ? null : issue.id
+                              )
+                            }
+                          >
+                            <TableCell sx={{ fontWeight: 'bold' }}>
+                              {issue.jira_key}
+                            </TableCell>
+                            <TableCell>{issue.title}</TableCell>
+                            <TableCell>
+                              {issue.session_name || 'N/A'}
+                            </TableCell>
+                            <TableCell align="center">
+                              {issue.story_points ? (
+                                <Chip
+                                  label={`${issue.story_points} pts`}
+                                  color="success"
+                                />
+                              ) : (
+                                <Chip
+                                  label="Not set"
+                                  variant="outlined"
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell align="center">
+                              {issue.is_estimated ? (
+                                <Chip
+                                  label="Estimated"
+                                  color="success"
+                                  size="small"
+                                />
+                              ) : (
+                                <Chip
+                                  label="Pending"
+                                  color="warning"
+                                  size="small"
+                                />
+                              )}
+                            </TableCell>
+                            <TableCell align="center">
+                              {estimates.length > 0 ? (
+                                <Box
+                                  sx={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: 0.5,
+                                  }}
+                                >
+                                  <Chip
+                                    label={estimates.length}
+                                    size="small"
+                                    variant="outlined"
+                                  />
+                                  {isExpanded ? (
+                                    <ExpandLessIcon fontSize="small" />
+                                  ) : (
+                                    <ExpandMoreIcon fontSize="small" />
+                                  )}
+                                </Box>
+                              ) : (
+                                <Typography variant="caption">
+                                  No estimates
+                                </Typography>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {/* Expanded row with estimates */}
+                          {isExpanded && estimates.length > 0 && (
+                            <TableRow sx={{ backgroundColor: '#f9f9f9' }}>
+                              <TableCell colSpan={6} sx={{ py: 0 }}>
+                                <Collapse in={isExpanded} timeout="auto">
+                                  <Box sx={{ p: 2 }}>
+                                    <Typography
+                                      variant="subtitle2"
+                                      sx={{ mb: 1, fontWeight: 'bold' }}
+                                    >
+                                      👥 User Estimates:
+                                    </Typography>
+                                    <Box
+                                      sx={{
+                                        display: 'flex',
+                                        flexWrap: 'wrap',
+                                        gap: 1,
+                                      }}
+                                    >
+                                      {estimates.map((est) => {
+                                        const estInfo = formatEstimate(
+                                          est
+                                        );
+                                        return (
+                                          <Chip
+                                            key={est.id}
+                                            label={`${getUserName(
+                                              est.user_id
+                                            )}: ${estInfo.display}`}
+                                            variant="outlined"
+                                            size="small"
+                                            color={
+                                              est.is_joker
+                                                ? 'default'
+                                                : 'primary'
+                                            }
+                                            title={estInfo.label}
+                                            sx={{
+                                              backgroundColor: est.is_joker
+                                                ? '#FFF8DC'
+                                                : undefined,
+                                            }}
+                                          />
+                                        );
+                                      })}
+                                    </Box>
+                                  </Box>
+                                </Collapse>
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                        <TableCell align="center">
-                          {issue.is_estimated ? (
-                            <Chip
-                              label="Estimated"
-                              color="success"
-                              size="small"
-                            />
-                          ) : (
-                            <Chip
-                              label="Pending"
-                              color="warning"
-                              size="small"
-                            />
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </React.Fragment>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
