@@ -382,7 +382,7 @@ async def add_user_to_session(
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Add user to session"""
+    """Add user to session participants"""
     session = session_service.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
@@ -398,10 +398,54 @@ async def remove_user_from_session(
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Remove user from session"""
+    """Remove user from session participants"""
     session = session_service.get_session(db, session_id)
     if not session:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
     
     session_service.remove_user_from_session(db, session_id, user_id)
     return {"message": "User removed from session"}
+
+
+@router.post("/{session_id}/estimators/{user_id}")
+async def add_estimator_to_session(
+    session_id: int,
+    user_id: int,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Add user as estimator for the session"""
+    session = session_service.get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    if session.created_by_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only session creator can manage estimators",
+        )
+    
+    session_service.add_estimator_to_session(db, session_id, user_id)
+    return {"message": "User added as estimator"}
+
+
+@router.delete("/{session_id}/estimators/{user_id}")
+async def remove_estimator_from_session(
+    session_id: int,
+    user_id: int,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove user from session estimators"""
+    session = session_service.get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    if session.created_by_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only session creator can manage estimators",
+        )
+    
+    session_service.remove_estimator_from_session(db, session_id, user_id)
+    return {"message": "User removed from estimators"}
