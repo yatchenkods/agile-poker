@@ -17,11 +17,14 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
 import ErrorIcon from '@mui/icons-material/Error';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 import { api } from '../services/api';
 
@@ -29,6 +32,7 @@ function Home() {
   const navigate = useNavigate();
   const [allSessions, setAllSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({
@@ -49,7 +53,18 @@ function Home() {
   useEffect(() => {
     // Load current user and sessions
     Promise.all([loadSessions(), loadCurrentUser()]);
+
+    // Set up window focus listener for auto-refresh
+    window.addEventListener('focus', handleWindowFocus);
+    return () => {
+      window.removeEventListener('focus', handleWindowFocus);
+    };
   }, []);
+
+  const handleWindowFocus = () => {
+    // Refresh sessions when user returns to the window
+    loadSessions(true);
+  };
 
   const loadCurrentUser = async () => {
     try {
@@ -60,14 +75,24 @@ function Home() {
     }
   };
 
-  const loadSessions = async () => {
+  const loadSessions = async (isRefresh = false) => {
+    if (isRefresh) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
+    
     try {
       const res = await api.get('/sessions/');
       setAllSessions(res.data);
     } catch (err) {
       console.error('Failed to load sessions:', err);
     } finally {
-      setLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -228,7 +253,11 @@ function Home() {
   };
 
   if (loading) {
-    return <Typography>Loading sessions...</Typography>;
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 8 }}>
+        <CircularProgress />
+      </Box>
+    );
   }
 
   const isAdmin = currentUser?.is_admin;
@@ -244,16 +273,38 @@ function Home() {
         }}
       >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        {isAdmin && (
-          <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
-            New Session
-          </Button>
-        )}
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Tooltip title="Refresh sessions">
+            <IconButton
+              onClick={() => loadSessions(true)}
+              disabled={refreshing}
+              size="small"
+            >
+              {refreshing ? (
+                <CircularProgress size={24} />
+              ) : (
+                <RefreshIcon />
+              )}
+            </IconButton>
+          </Tooltip>
+          {isAdmin && (
+            <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
+              New Session
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {!isAdmin && sessions.length === 0 && allSessions.length > 0 && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          ℹ️ You are not listed as an estimator in any sessions. Please contact an administrator to add you to a session.
+          <Box>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              ℹ️ You are not listed as an estimator in any sessions.
+            </Typography>
+            <Typography variant="caption" color="inherit">
+              Please contact an administrator to add you to a session. Try refreshing the page if you were recently added.
+            </Typography>
+          </Box>
         </Alert>
       )}
 
