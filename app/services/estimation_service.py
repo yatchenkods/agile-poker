@@ -134,35 +134,39 @@ class EstimationService:
     def _check_consensus(db: Session, issue_id: int) -> bool:
         """Check if estimates have reached consensus and auto-apply"""
         issue = db.query(Issue).filter(Issue.id == issue_id).first()
-        if not issue:
+        if not issue or issue.is_estimated:
             return False
         
         # Get session participants count
         from app.models.session import Session as SessionModel
         session = db.query(SessionModel).filter(SessionModel.id == issue.session_id).first()
-        participants_count = len(session.participants) if session else 0
+        if not session:
+            return False
         
+        participants_count = len(session.participants)
         if participants_count == 0:
             return False
         
         # Get all estimates (both regular and joker)
         estimates = db.query(Estimate).filter(Estimate.issue_id == issue_id).all()
+        estimate_count = len(estimates)
         
-        # All participants must have voted (including joker votes)
-        if len(estimates) < participants_count:
+        # Check if all participants have voted (including joker votes)
+        if estimate_count < participants_count:
             return False
         
-        # Only consider non-joker estimates for consensus
+        # Only consider non-joker estimates for consensus calculation
         valid_estimates = [e for e in estimates if not e.is_joker]
         
-        # If no valid estimates (only jokers), no consensus
+        # If no valid estimates (only jokers), cannot reach consensus
         if not valid_estimates:
             return False
         
         points = [e.story_points for e in valid_estimates]
+        variance = max(points) - min(points)
         
-        # Check if consensus (max - min <= 2 points)
-        if (max(points) - min(points)) <= 2:
+        # Check if consensus: max - min <= 2 points AND all participants have voted
+        if variance <= 2 and estimate_count == participants_count:
             # Calculate average and round to nearest valid score
             avg = sum(points) / len(points)
             valid_scores = [1, 2, 4, 8, 16]
