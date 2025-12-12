@@ -39,6 +39,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
 import SecurityIcon from '@mui/icons-material/Security';
+import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { api } from '../services/api';
 
 function Admin() {
@@ -57,6 +58,8 @@ function Admin() {
   const [estimationStats, setEstimationStats] = useState([]);
   const [showOnlyPending, setShowOnlyPending] = useState(false);
   const [issueEstimates, setIssueEstimates] = useState({});
+  const [issueSessionEstimators, setIssueSessionEstimators] = useState({});
+  const [sessions, setSessions] = useState([]);
 
   // Reset Password Dialog State
   const [resetDialog, setResetDialog] = useState(false);
@@ -119,11 +122,12 @@ function Admin() {
       setLoading(true);
       setError(null);
 
-      const [statsRes, usersRes, issuesRes, estimationRes] = await Promise.all([
+      const [statsRes, usersRes, issuesRes, estimationRes, sessionsRes] = await Promise.all([
         api.get('/admin/stats'),
         api.get('/admin/users-stats'),
         api.get('/issues/'),
         api.get('/admin/conflicting-estimates'),
+        api.get('/sessions/?limit=1000'),
       ]);
 
       setStats(statsRes.data);
@@ -147,6 +151,10 @@ function Admin() {
         await loadIssueEstimates(issuesRes.data);
       }
 
+      if (sessionsRes.data && Array.isArray(sessionsRes.data)) {
+        setSessions(sessionsRes.data);
+      }
+
       setEstimationStats(estimationRes.data || []);
     } catch (err) {
       console.error('Failed to load admin data:', err);
@@ -159,20 +167,32 @@ function Admin() {
   const loadIssueEstimates = async (issuesList) => {
     try {
       const estimatesMap = {};
+      const sessionEstimatorsMap = {};
       
       for (const issue of issuesList) {
         try {
-          const res = await api.get(`/estimates/`, {
+          // Load estimates for this issue
+          const estimatesRes = await api.get(`/estimates/`, {
             params: { issue_id: issue.id },
           });
-          estimatesMap[issue.id] = res.data || [];
+          estimatesMap[issue.id] = estimatesRes.data || [];
+
+          // Find the session for this issue and get its estimators
+          const issueSession = sessions.find(s => s.id === issue.session_id);
+          if (issueSession && issueSession.estimators) {
+            sessionEstimatorsMap[issue.id] = issueSession.estimators;
+          } else {
+            sessionEstimatorsMap[issue.id] = [];
+          }
         } catch (err) {
           console.error(`Failed to load estimates for issue ${issue.id}:`, err);
           estimatesMap[issue.id] = [];
+          sessionEstimatorsMap[issue.id] = [];
         }
       }
       
       setIssueEstimates(estimatesMap);
+      setIssueSessionEstimators(sessionEstimatorsMap);
     } catch (err) {
       console.error('Failed to load issue estimates:', err);
     }
@@ -452,37 +472,52 @@ function Admin() {
     return colors[userId % colors.length];
   };
 
-  const renderEstimates = (estimates) => {
-    if (!estimates || estimates.length === 0) {
-      return <Typography variant="caption">No estimates</Typography>;
+  const renderEstimates = (issueId, estimates, allEstimators) => {
+    // Get estimators who have submitted (from estimates array)
+    const estimatedUserIds = estimates.map(e => e.user_id);
+    
+    // Get all estimators for this issue's session
+    const sessionEstimators = allEstimators || [];
+    
+    if (sessionEstimators.length === 0) {
+      return <Typography variant="caption">No estimators assigned</Typography>;
     }
 
     return (
-      <AvatarGroup max={6} sx={{ justifyContent: 'flex-start' }}>
-        {estimates.map((est) => {
-          const isJoker = est.is_joker;
-          const displayValue = isJoker ? 'J' : est.story_points;
-          const userName = getUserName(est.user_id);
-          const avatarColor = getAvatarColor(est.user_id);
+      <AvatarGroup max={8} sx={{ justifyContent: 'flex-start' }}>
+        {sessionEstimators.map((estimator) => {
+          // Find if this estimator has submitted an estimate
+          const estimate = estimates.find(e => e.user_id === estimator.id);
+          const hasEstimate = estimate !== undefined;
+          
+          const isJoker = estimate?.is_joker;
+          const displayValue = isJoker ? 'J' : (estimate?.story_points || '?');
+          const userName = estimator.full_name || `User #${estimator.id}`;
+          const avatarColor = getAvatarColor(estimator.id);
 
           return (
             <Tooltip
-              key={est.id}
-              title={`${userName}: ${isJoker ? 'Joker (abstain)' : displayValue + ' points'}`}
+              key={estimator.id}
+              title={`${userName}: ${hasEstimate ? (isJoker ? 'Joker (abstain)' : displayValue + ' points') : 'Awaiting estimate'}`}
               arrow
             >
               <Avatar
                 sx={{
                   width: 40,
                   height: 40,
-                  backgroundColor: isJoker ? '#FFD700' : avatarColor,
-                  color: isJoker ? '#000' : '#fff',
+                  backgroundColor: hasEstimate 
+                    ? (isJoker ? '#FFD700' : avatarColor)
+                    : '#CCCCCC',
+                  color: hasEstimate
+                    ? (isJoker ? '#000' : '#fff')
+                    : '#666',
                   fontWeight: 'bold',
                   fontSize: '0.9rem',
                   cursor: 'pointer',
                   border: '2px solid white',
                   boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
                   transition: 'transform 0.2s',
+                  opacity: hasEstimate ? 1 : 0.6,
                   '&:hover': {
                     transform: 'scale(1.15)',
                   },
@@ -958,6 +993,44 @@ function Admin() {
                 {showOnlyPending &&
                   ` (pending: ${issues.filter((i) => !i.is_estimated).length})`}
               </Typography>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Box sx={{ fontSize: '0.875rem' }}>
+                  <Box sx={{ mb: 0.5 }}>💡 <strong>Estimator Display Legend:</strong></Box>
+                  <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap', ml: 2 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        backgroundColor: '#1f77b4',
+                        border: '2px solid white'
+                      }} />
+                      <span>Estimate submitted</span>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        backgroundColor: '#CCCCCC',
+                        border: '2px solid white',
+                        opacity: 0.6
+                      }} />
+                      <span>Awaiting estimate (?)  </span>
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{
+                        width: 24,
+                        height: 24,
+                        borderRadius: '50%',
+                        backgroundColor: '#FFD700',
+                        border: '2px solid white'
+                      }} />
+                      <span>Joker (abstain)</span>
+                    </Box>
+                  </Box>
+                </Box>
+              </Alert>
               <TableContainer component={Paper}>
                 <Table>
                   <TableHead>
@@ -978,13 +1051,14 @@ function Admin() {
                         <strong>Status</strong>
                       </TableCell>
                       <TableCell>
-                        <strong>User Estimates</strong>
+                        <strong>All Estimators</strong>
                       </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredIssues.map((issue) => {
                       const estimates = issueEstimates[issue.id] || [];
+                      const sessionEstimators = issueSessionEstimators[issue.id] || [];
 
                       return (
                         <TableRow
@@ -1037,7 +1111,7 @@ function Admin() {
                           </TableCell>
                           <TableCell>
                             <Box sx={{ py: 1 }}>
-                              {renderEstimates(estimates)}
+                              {renderEstimates(issue.id, estimates, sessionEstimators)}
                             </Box>
                           </TableCell>
                         </TableRow>
