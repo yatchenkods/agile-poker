@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     # Jira Integration
     jira_enabled: bool = True
-    jira_base_url: str = "https://jira.example.com"
+    jira_url: str = "https://jira.example.com"
     jira_username: str = ""
     jira_api_token: str = ""
     jira_project_key: Optional[str] = None

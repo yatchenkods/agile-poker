@@ -30,7 +30,7 @@ Create or update your `.env` file with the following Jira configuration:
 ```env
 # Jira Configuration
 JIRA_ENABLED=true
-JIRA_BASE_URL=https://your-jira-instance.atlassian.net
+JIRA_URL=https://your-jira-instance.atlassian.net
 JIRA_USERNAME=your-email@example.com
 JIRA_API_TOKEN=your-generated-api-token
 ```
@@ -38,7 +38,7 @@ JIRA_API_TOKEN=your-generated-api-token
 ### Configuration Details:
 
 - **JIRA_ENABLED**: Enable/disable Jira integration (default: true)
-- **JIRA_BASE_URL**: Your Jira instance URL
+- **JIRA_URL**: Your Jira instance URL
   - For Jira Cloud: `https://your-domain.atlassian.net`
   - For Jira Server: `https://jira.yourcompany.com`
 - **JIRA_USERNAME**: Your Jira username or email
@@ -60,13 +60,13 @@ If configured correctly, you should see a list of issues from your sprint.
 ### Error: "Cannot connect to Jira. Please check Jira configuration"
 
 **Causes:**
-- Incorrect JIRA_BASE_URL
+- Incorrect JIRA_URL
 - Invalid JIRA_USERNAME or JIRA_API_TOKEN
 - Jira instance is not accessible from the server
 - API credentials don't have permission to access the Jira API
 
 **Solutions:**
-1. Verify JIRA_BASE_URL is correct and accessible
+1. Verify JIRA_URL is correct and accessible
 2. Check JIRA_USERNAME is correct (email for Cloud, username for Server)
 3. Verify JIRA_API_TOKEN is correct and hasn't expired
 4. Ensure your Jira user has API access enabled

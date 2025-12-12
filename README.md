@@ -130,7 +130,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 # Jira
 JIRA_ENABLED=true
-JIRA_BASE_URL=https://jira.example.com
+JIRA_URL=https://jira.example.com
 JIRA_USERNAME=your-username
 JIRA_API_TOKEN=your-api-token
 

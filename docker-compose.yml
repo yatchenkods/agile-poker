@@ -45,6 +45,8 @@ services:
       ALGORITHM: HS256
       ACCESS_TOKEN_EXPIRE_MINUTES: 30
       LOG_LEVEL: INFO
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
