@@ -17,13 +17,11 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
-  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
 import ErrorIcon from '@mui/icons-material/Error';
-import LockIcon from '@mui/icons-material/Lock';
 
 import { api } from '../services/api';
 
@@ -231,22 +229,10 @@ function Home() {
         }}
       >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        {isAdmin ? (
+        {isAdmin && (
           <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
             New Session
           </Button>
-        ) : (
-          <Tooltip title="Only administrators can create new sessions">
-            <Box>
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                disabled={true}
-              >
-                New Session
-              </Button>
-            </Box>
-          </Tooltip>
         )}
       </Box>
 
