@@ -281,11 +281,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
               </Button>
             </Box>
 
-            {/* Info text about Joker */}
-            <Typography variant="caption" color="textSecondary" sx={{ display: 'block', mb: 2 }}>
-              💡 <strong>J (Joker)</strong> — Abstain from voting. You'll be marked as voted, but your vote won't affect the estimate.
-            </Typography>
-
             <Box sx={{ display: 'flex', gap: 1 }}>
               <Button
                 variant="contained"
