@@ -17,6 +17,7 @@ class SessionService:
         Converts SQLAlchemy model to dict and adds:
         - participant_count: number of participants
         - issue_count: number of issues
+        - estimator_count: number of estimators
         """
         session_dict = {
             "id": session.id,
@@ -30,6 +31,7 @@ class SessionService:
             "closed_at": session.closed_at,
             "participant_count": len(session.participants) if session.participants else 0,
             "issue_count": len(session.issues) if session.issues else 0,
+            "estimator_count": len(session.estimators) if session.estimators else 0,
         }
         return session_dict
 
@@ -91,7 +93,7 @@ class SessionService:
 
     @staticmethod
     def add_user_to_session(db: Session, session_id: int, user_id: int) -> None:
-        """Add user to session"""
+        """Add user to session participants"""
         session = SessionService.get_session(db, session_id)
         if session:
             from app.models.user import User
@@ -102,7 +104,7 @@ class SessionService:
 
     @staticmethod
     def remove_user_from_session(db: Session, session_id: int, user_id: int) -> None:
-        """Remove user from session"""
+        """Remove user from session participants"""
         session = SessionService.get_session(db, session_id)
         if session:
             from app.models.user import User
@@ -110,3 +112,41 @@ class SessionService:
             if user and user in session.participants:
                 session.participants.remove(user)
                 db.commit()
+
+    @staticmethod
+    def add_estimator_to_session(db: Session, session_id: int, user_id: int) -> None:
+        """Add user as estimator for the session"""
+        session = SessionService.get_session(db, session_id)
+        if session:
+            from app.models.user import User
+            user = db.query(User).filter(User.id == user_id).first()
+            if user and user not in session.estimators:
+                session.estimators.append(user)
+                db.commit()
+
+    @staticmethod
+    def remove_estimator_from_session(db: Session, session_id: int, user_id: int) -> None:
+        """Remove user from session estimators"""
+        session = SessionService.get_session(db, session_id)
+        if session:
+            from app.models.user import User
+            user = db.query(User).filter(User.id == user_id).first()
+            if user and user in session.estimators:
+                session.estimators.remove(user)
+                db.commit()
+
+    @staticmethod
+    def get_session_estimators(db: Session, session_id: int) -> list:
+        """Get all estimators for a session"""
+        session = SessionService.get_session(db, session_id)
+        if session:
+            return session.estimators
+        return []
+
+    @staticmethod
+    def get_estimator_count(db: Session, session_id: int) -> int:
+        """Get count of estimators for a session"""
+        session = SessionService.get_session(db, session_id)
+        if session:
+            return len(session.estimators)
+        return 0
