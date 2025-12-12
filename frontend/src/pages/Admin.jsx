@@ -24,7 +24,8 @@ import {
   IconButton,
   Tabs,
   Tab,
-  Navigate,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -45,6 +46,7 @@ function Admin() {
   const [estimationStats, setEstimationStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [showOnlyPending, setShowOnlyPending] = useState(false);
   
   // Reset password dialog
   const [resetDialog, setResetDialog] = useState(false);
@@ -174,6 +176,11 @@ function Admin() {
       setResetLoading(false);
     }
   };
+
+  // Filter issues based on toggle
+  const filteredIssues = showOnlyPending 
+    ? issues.filter(issue => !issue.is_estimated)
+    : issues;
 
   // If not admin, show access denied
   if (!isAdmin && !loading) {
@@ -390,49 +397,78 @@ function Admin() {
       {/* TAB 2: ISSUES MANAGEMENT */}
       {activeTab === 2 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            📋 Issue Management
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">📋 Issue Management</Typography>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={showOnlyPending}
+                  onChange={(e) => setShowOnlyPending(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label="Show only pending (not estimated)"
+            />
+          </Box>
 
-          {issues.length > 0 ? (
-            <TableContainer component={Paper}>
-              <Table>
-                <TableHead>
-                  <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                    <TableCell><strong>Issue Key</strong></TableCell>
-                    <TableCell><strong>Title</strong></TableCell>
-                    <TableCell><strong>Session</strong></TableCell>
-                    <TableCell align="center"><strong>Current Estimate</strong></TableCell>
-                    <TableCell align="center"><strong>Status</strong></TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {issues.map((issue) => (
-                    <TableRow key={issue.id}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
-                      <TableCell>{issue.title}</TableCell>
-                      <TableCell>{issue.session_name || 'N/A'}</TableCell>
-                      <TableCell align="center">
-                        {issue.story_points ? (
-                          <Chip label={`${issue.story_points} pts`} color="success" />
-                        ) : (
-                          <Chip label="Not set" variant="outlined" />
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        {issue.is_estimated ? (
-                          <Chip label="Estimated" color="success" size="small" />
-                        ) : (
-                          <Chip label="Pending" variant="outlined" size="small" />
-                        )}
-                      </TableCell>
+          {filteredIssues.length > 0 ? (
+            <Box>
+              <Typography variant="caption" color="textSecondary" sx={{ mb: 1, display: 'block' }}>
+                Showing {filteredIssues.length} of {issues.length} issues
+                {showOnlyPending && ` (pending: ${issues.filter(i => !i.is_estimated).length})`}
+              </Typography>
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                      <TableCell><strong>Issue Key</strong></TableCell>
+                      <TableCell><strong>Title</strong></TableCell>
+                      <TableCell><strong>Session</strong></TableCell>
+                      <TableCell align="center"><strong>Current Estimate</strong></TableCell>
+                      <TableCell align="center"><strong>Status</strong></TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                  </TableHead>
+                  <TableBody>
+                    {filteredIssues.map((issue) => (
+                      <TableRow 
+                        key={issue.id}
+                        sx={{
+                          backgroundColor: !issue.is_estimated ? '#fff9c4' : 'inherit',
+                          '&:hover': {
+                            backgroundColor: !issue.is_estimated ? '#ffeb3b' : '#f5f5f5'
+                          }
+                        }}
+                      >
+                        <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
+                        <TableCell>{issue.title}</TableCell>
+                        <TableCell>{issue.session_name || 'N/A'}</TableCell>
+                        <TableCell align="center">
+                          {issue.story_points ? (
+                            <Chip label={`${issue.story_points} pts`} color="success" />
+                          ) : (
+                            <Chip label="Not set" variant="outlined" />
+                          )}
+                        </TableCell>
+                        <TableCell align="center">
+                          {issue.is_estimated ? (
+                            <Chip label="Estimated" color="success" size="small" />
+                          ) : (
+                            <Chip label="Pending" color="warning" size="small" />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
           ) : (
-            <Alert severity="info">No issues found</Alert>
+            <Alert severity="info">
+              {showOnlyPending 
+                ? 'All issues have been estimated! 🎉' 
+                : 'No issues found'
+              }
+            </Alert>
           )}
         </Box>
       )}
