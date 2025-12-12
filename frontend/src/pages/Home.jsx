@@ -27,7 +27,7 @@ import { api } from '../services/api';
 
 function Home() {
   const navigate = useNavigate();
-  const [sessions, setSessions] = useState([]);
+  const [allSessions, setAllSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
@@ -63,13 +63,28 @@ function Home() {
   const loadSessions = async () => {
     try {
       const res = await api.get('/sessions/');
-      setSessions(res.data);
+      setAllSessions(res.data);
     } catch (err) {
       console.error('Failed to load sessions:', err);
     } finally {
       setLoading(false);
     }
   };
+
+  // Filter sessions based on user role
+  const getVisibleSessions = () => {
+    // Admins see all sessions
+    if (currentUser?.is_admin) {
+      return allSessions;
+    }
+
+    // Regular users see only sessions where they are in the estimators list
+    return allSessions.filter((session) => {
+      return session.estimators?.some((estimator) => estimator.id === currentUser?.id);
+    });
+  };
+
+  const sessions = getVisibleSessions();
 
   // Parse issue keys from text input (handles spaces, commas, newlines)
   const parseIssueKeys = (text) => {
@@ -235,6 +250,18 @@ function Home() {
           </Button>
         )}
       </Box>
+
+      {!isAdmin && sessions.length === 0 && allSessions.length > 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          ℹ️ You are not listed as an estimator in any sessions. Please contact an administrator to add you to a session.
+        </Alert>
+      )}
+
+      {sessions.length === 0 && (
+        <Typography variant="body1" color="textSecondary" sx={{ textAlign: 'center', py: 4 }}>
+          {isAdmin ? 'No sessions available. Create one to get started!' : 'No sessions to display.'}
+        </Typography>
+      )}
 
       <Grid container spacing={2}>
         {sessions.map((session) => (
