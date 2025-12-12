@@ -32,13 +32,20 @@ class Issue(BaseModel):
     issue_type: str = ""
 
 
+class FailedIssue(BaseModel):
+    """Failed issue with error reason"""
+    key: str
+    reason: str
+    details: str = ""
+
+
 class ImportByKeysResponse(BaseModel):
     """Import by keys response schema"""
     status: str
     issues: List[Issue]
     count: int
     failed_count: int = 0
-    failed_keys: List[str] = []
+    failed_issues: List[FailedIssue] = []
 
 
 class ConnectionTestResponse(BaseModel):
@@ -131,7 +138,7 @@ async def import_issues_by_keys(request: ImportByKeysRequest):
         issue_keys: List of Jira issue keys (e.g., ['DEVOPS-123', 'DEVOPS-456'])
 
     Returns:
-        List of imported issues with their details
+        List of imported issues with their details and error information for failed issues
     """
     logger.info(f"Received import request for {len(request.issue_keys)} issue(s)")
     
@@ -153,29 +160,45 @@ async def import_issues_by_keys(request: ImportByKeysRequest):
         )
 
     try:
-        # Get issues by keys
+        # Get issues by keys - now returns tuple of (successful, failed)
         logger.info(f"Importing {len(request.issue_keys)} issue(s): {request.issue_keys}")
-        issues = jira_service.get_issues_by_keys(request.issue_keys)
+        successful_issues, failed_issues = jira_service.get_issues_by_keys(request.issue_keys)
 
-        # Calculate failed keys
-        successful_keys = {issue['key'].upper() for issue in issues}
-        failed_keys = [
-            key.upper() for key in request.issue_keys 
-            if key.upper() not in successful_keys
-        ]
-        failed_count = len(failed_keys)
-
-        logger.info(f"Successfully imported {len(issues)} out of {len(request.issue_keys)} issue(s)")
+        logger.info(
+            f"Import result: {len(successful_issues)} successful, "
+            f"{len(failed_issues)} failed out of {len(request.issue_keys)} total"
+        )
         
-        if failed_count > 0:
-            logger.warning(f"Failed to import {failed_count} issue(s): {failed_keys}")
+        # Log each failed issue with reason
+        for failed in failed_issues:
+            logger.warning(
+                f"Failed to import {failed['key']}: {failed['reason']} - {failed.get('details', '')}"
+            )
+
+        # Prepare response
+        failed_issue_responses = [
+            FailedIssue(
+                key=failed["key"],
+                reason=failed["reason"],
+                details=failed.get("details", "")
+            )
+            for failed in failed_issues
+        ]
+
+        # Determine overall status
+        if len(successful_issues) == 0 and len(failed_issues) > 0:
+            overall_status = "error"
+        elif len(failed_issues) > 0:
+            overall_status = "partial"
+        else:
+            overall_status = "success"
 
         return ImportByKeysResponse(
-            status="success" if len(issues) > 0 else "partial",
-            issues=issues,
-            count=len(issues),
-            failed_count=failed_count,
-            failed_keys=failed_keys,
+            status=overall_status,
+            issues=successful_issues,
+            count=len(successful_issues),
+            failed_count=len(failed_issues),
+            failed_issues=failed_issue_responses,
         )
 
     except HTTPException:
