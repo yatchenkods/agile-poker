@@ -27,7 +27,8 @@ import {
   FormControlLabel,
   Switch,
   Tooltip,
-  Collapse,
+  Avatar,
+  AvatarGroup,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
@@ -38,8 +39,6 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
 import SecurityIcon from '@mui/icons-material/Security';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { api } from '../services/api';
 
 function Admin() {
@@ -50,7 +49,6 @@ function Admin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [permissionError, setPermissionError] = useState(null);
-  const [expandedIssue, setExpandedIssue] = useState(null);
 
   // Data State
   const [stats, setStats] = useState(null);
@@ -449,11 +447,54 @@ function Admin() {
     return user ? user.full_name : `User #${userId}`;
   };
 
-  const formatEstimate = (estimate) => {
-    if (estimate.is_joker) {
-      return { display: 'J', label: 'Joker (abstain)' };
+  const getAvatarColor = (userId) => {
+    const colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f'];
+    return colors[userId % colors.length];
+  };
+
+  const renderEstimates = (estimates) => {
+    if (!estimates || estimates.length === 0) {
+      return <Typography variant="caption">No estimates</Typography>;
     }
-    return { display: estimate.story_points, label: `${estimate.story_points} points` };
+
+    return (
+      <AvatarGroup max={6} sx={{ justifyContent: 'flex-start' }}>
+        {estimates.map((est) => {
+          const isJoker = est.is_joker;
+          const displayValue = isJoker ? 'J' : est.story_points;
+          const userName = getUserName(est.user_id);
+          const avatarColor = getAvatarColor(est.user_id);
+
+          return (
+            <Tooltip
+              key={est.id}
+              title={`${userName}: ${isJoker ? 'Joker (abstain)' : displayValue + ' points'}`}
+              arrow
+            >
+              <Avatar
+                sx={{
+                  width: 40,
+                  height: 40,
+                  backgroundColor: isJoker ? '#FFD700' : avatarColor,
+                  color: isJoker ? '#000' : '#fff',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  border: '2px solid white',
+                  boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                  transition: 'transform 0.2s',
+                  '&:hover': {
+                    transform: 'scale(1.15)',
+                  },
+                }}
+              >
+                {displayValue}
+              </Avatar>
+            </Tooltip>
+          );
+        })}
+      </AvatarGroup>
+    );
   };
 
   if (!isAdmin && !loading) {
@@ -936,151 +977,70 @@ function Admin() {
                       <TableCell align="center">
                         <strong>Status</strong>
                       </TableCell>
-                      <TableCell align="center">
-                        <strong>Estimates</strong>
+                      <TableCell>
+                        <strong>User Estimates</strong>
                       </TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {filteredIssues.map((issue) => {
                       const estimates = issueEstimates[issue.id] || [];
-                      const isExpanded = expandedIssue === issue.id;
 
                       return (
-                        <React.Fragment key={issue.id}>
-                          <TableRow
-                            sx={{
+                        <TableRow
+                          key={issue.id}
+                          sx={{
+                            backgroundColor: !issue.is_estimated
+                              ? '#fff9c4'
+                              : 'inherit',
+                            '&:hover': {
                               backgroundColor: !issue.is_estimated
-                                ? '#fff9c4'
-                                : 'inherit',
-                              '&:hover': {
-                                backgroundColor: !issue.is_estimated
-                                  ? '#ffeb3b'
-                                  : '#f5f5f5',
-                              },
-                              cursor: estimates.length > 0 ? 'pointer' : 'default',
-                            }}
-                            onClick={() =>
-                              estimates.length > 0 &&
-                              setExpandedIssue(
-                                isExpanded ? null : issue.id
-                              )
-                            }
-                          >
-                            <TableCell sx={{ fontWeight: 'bold' }}>
-                              {issue.jira_key}
-                            </TableCell>
-                            <TableCell>{issue.title}</TableCell>
-                            <TableCell>
-                              {issue.session_name || 'N/A'}
-                            </TableCell>
-                            <TableCell align="center">
-                              {issue.story_points ? (
-                                <Chip
-                                  label={`${issue.story_points} pts`}
-                                  color="success"
-                                />
-                              ) : (
-                                <Chip
-                                  label="Not set"
-                                  variant="outlined"
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell align="center">
-                              {issue.is_estimated ? (
-                                <Chip
-                                  label="Estimated"
-                                  color="success"
-                                  size="small"
-                                />
-                              ) : (
-                                <Chip
-                                  label="Pending"
-                                  color="warning"
-                                  size="small"
-                                />
-                              )}
-                            </TableCell>
-                            <TableCell align="center">
-                              {estimates.length > 0 ? (
-                                <Box
-                                  sx={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 0.5,
-                                  }}
-                                >
-                                  <Chip
-                                    label={estimates.length}
-                                    size="small"
-                                    variant="outlined"
-                                  />
-                                  {isExpanded ? (
-                                    <ExpandLessIcon fontSize="small" />
-                                  ) : (
-                                    <ExpandMoreIcon fontSize="small" />
-                                  )}
-                                </Box>
-                              ) : (
-                                <Typography variant="caption">
-                                  No estimates
-                                </Typography>
-                              )}
-                            </TableCell>
-                          </TableRow>
-                          {/* Expanded row with estimates */}
-                          {isExpanded && estimates.length > 0 && (
-                            <TableRow sx={{ backgroundColor: '#f9f9f9' }}>
-                              <TableCell colSpan={6} sx={{ py: 0 }}>
-                                <Collapse in={isExpanded} timeout="auto">
-                                  <Box sx={{ p: 2 }}>
-                                    <Typography
-                                      variant="subtitle2"
-                                      sx={{ mb: 1, fontWeight: 'bold' }}
-                                    >
-                                      👥 User Estimates:
-                                    </Typography>
-                                    <Box
-                                      sx={{
-                                        display: 'flex',
-                                        flexWrap: 'wrap',
-                                        gap: 1,
-                                      }}
-                                    >
-                                      {estimates.map((est) => {
-                                        const estInfo = formatEstimate(
-                                          est
-                                        );
-                                        return (
-                                          <Chip
-                                            key={est.id}
-                                            label={`${getUserName(
-                                              est.user_id
-                                            )}: ${estInfo.display}`}
-                                            variant="outlined"
-                                            size="small"
-                                            color={
-                                              est.is_joker
-                                                ? 'default'
-                                                : 'primary'
-                                            }
-                                            title={estInfo.label}
-                                            sx={{
-                                              backgroundColor: est.is_joker
-                                                ? '#FFF8DC'
-                                                : undefined,
-                                            }}
-                                          />
-                                        );
-                                      })}
-                                    </Box>
-                                  </Box>
-                                </Collapse>
-                              </TableCell>
-                            </TableRow>
-                          )}
-                        </React.Fragment>
+                                ? '#ffeb3b'
+                                : '#f5f5f5',
+                            },
+                          }}
+                        >
+                          <TableCell sx={{ fontWeight: 'bold' }}>
+                            {issue.jira_key}
+                          </TableCell>
+                          <TableCell>{issue.title}</TableCell>
+                          <TableCell>
+                            {issue.session_name || 'N/A'}
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.story_points ? (
+                              <Chip
+                                label={`${issue.story_points} pts`}
+                                color="success"
+                              />
+                            ) : (
+                              <Chip
+                                label="Not set"
+                                variant="outlined"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell align="center">
+                            {issue.is_estimated ? (
+                              <Chip
+                                label="Estimated"
+                                color="success"
+                                size="small"
+                              />
+                            ) : (
+                              <Chip
+                                label="Pending"
+                                color="warning"
+                                size="small"
+                              />
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Box sx={{ py: 1 }}>
+                              {renderEstimates(estimates)}
+                            </Box>
+                          </TableCell>
+                        </TableRow>
                       );
                     })}
                   </TableBody>
