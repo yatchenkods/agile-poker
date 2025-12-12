@@ -115,11 +115,12 @@ function Admin() {
     setResetLoading(true);
 
     try {
-      // Note: This would need a backend endpoint to reset user password
-      // For now, we'll show a placeholder
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const response = await api.post('/admin/reset-password', {
+        user_id: selectedUser.id,
+        new_password: newPassword,
+      });
 
-      setResetMessage(`✅ Password reset successfully for ${selectedUser.email}`);
+      setResetMessage(`✅ ${response.data.message}`);
       setTimeout(() => {
         handleCloseResetDialog();
         loadAdminData();
