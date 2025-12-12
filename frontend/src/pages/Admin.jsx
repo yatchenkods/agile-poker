@@ -30,6 +30,8 @@ import {
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import DeleteIcon from '@mui/icons-material/Delete';
+import AddIcon from '@mui/icons-material/Add';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
@@ -57,6 +59,23 @@ function Admin() {
   const [resetMessage, setResetMessage] = useState(null);
   const [resetError, setResetError] = useState(null);
 
+  // Add user dialog
+  const [addUserDialog, setAddUserDialog] = useState(false);
+  const [newUserData, setNewUserData] = useState({
+    email: '',
+    full_name: '',
+    password: '',
+  });
+  const [addUserLoading, setAddUserLoading] = useState(false);
+  const [addUserError, setAddUserError] = useState(null);
+  const [addUserMessage, setAddUserMessage] = useState(null);
+
+  // Delete user dialog
+  const [deleteDialog, setDeleteDialog] = useState(false);
+  const [userToDelete, setUserToDelete] = useState(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
   useEffect(() => {
     checkAdminAccess();
   }, []);
@@ -73,7 +92,6 @@ function Admin() {
         return;
       }
       
-      // If admin, load data
       await loadAdminData();
     } catch (err) {
       console.error('Failed to check admin access:', err);
@@ -87,11 +105,9 @@ function Admin() {
       setLoading(true);
       setError(null);
 
-      // Load statistics
       const statsRes = await api.get('/admin/stats');
       setStats(statsRes.data);
 
-      // Load users
       const usersRes = await api.get('/admin/users-stats');
       if (usersRes.data && Array.isArray(usersRes.data)) {
         const userList = usersRes.data.map((stat) => ({
@@ -106,13 +122,11 @@ function Admin() {
         setUsers(userList);
       }
 
-      // Load issues with estimation stats
       const issuesRes = await api.get('/issues/');
       if (issuesRes.data && Array.isArray(issuesRes.data)) {
         setIssues(issuesRes.data);
       }
 
-      // Load estimation statistics (issues with vote status)
       const estimationRes = await api.get('/admin/conflicting-estimates');
       setEstimationStats(estimationRes.data || []);
     } catch (err) {
@@ -123,6 +137,7 @@ function Admin() {
     }
   };
 
+  // RESET PASSWORD
   const handleOpenResetDialog = (user) => {
     setSelectedUser(user);
     setNewPassword('');
@@ -177,12 +192,117 @@ function Admin() {
     }
   };
 
-  // Filter issues based on toggle
+  // ADD USER
+  const handleOpenAddUserDialog = () => {
+    setNewUserData({ email: '', full_name: '', password: '' });
+    setAddUserError(null);
+    setAddUserMessage(null);
+    setAddUserDialog(true);
+  };
+
+  const handleCloseAddUserDialog = () => {
+    setAddUserDialog(false);
+    setNewUserData({ email: '', full_name: '', password: '' });
+  };
+
+  const handleAddUser = async () => {
+    setAddUserError(null);
+    setAddUserMessage(null);
+
+    if (!newUserData.email || !newUserData.full_name || !newUserData.password) {
+      setAddUserError('All fields are required');
+      return;
+    }
+
+    if (!newUserData.email.includes('@')) {
+      setAddUserError('Invalid email format');
+      return;
+    }
+
+    if (newUserData.password.length < 8) {
+      setAddUserError('Password must be at least 8 characters');
+      return;
+    }
+
+    setAddUserLoading(true);
+
+    try {
+      const response = await api.post('/auth/register', {
+        email: newUserData.email,
+        full_name: newUserData.full_name,
+        password: newUserData.password,
+      });
+
+      setAddUserMessage(`✅ User ${newUserData.email} created successfully`);
+      setTimeout(() => {
+        handleCloseAddUserDialog();
+        loadAdminData();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to create user:', err);
+      setAddUserError(err.response?.data?.detail || 'Failed to create user');
+    } finally {
+      setAddUserLoading(false);
+    }
+  };
+
+  // DELETE USER
+  const handleOpenDeleteDialog = (user) => {
+    setUserToDelete(user);
+    setDeleteError(null);
+    setDeleteDialog(true);
+  };
+
+  const handleCloseDeleteDialog = () => {
+    setDeleteDialog(false);
+    setUserToDelete(null);
+  };
+
+  const handleDeleteUser = async () => {
+    setDeleteError(null);
+    setDeleteLoading(true);
+
+    try {
+      await api.delete(`/users/${userToDelete.id}`);
+      setAddUserMessage(`✅ User ${userToDelete.email} deleted successfully`);
+      setTimeout(() => {
+        handleCloseDeleteDialog();
+        loadAdminData();
+      }, 2000);
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      setDeleteError(err.response?.data?.detail || 'Failed to delete user');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // TOGGLE USER STATUS
+  const handleToggleUserStatus = async (user) => {
+    try {
+      const updatedUsers = users.map(u => {
+        if (u.id === user.id) {
+          return { ...u, is_active: !u.is_active };
+        }
+        return u;
+      });
+      setUsers(updatedUsers);
+
+      // Make API call to update status
+      await api.put(`/users/${user.id}`, {
+        is_active: !user.is_active,
+      });
+    } catch (err) {
+      console.error('Failed to update user status:', err);
+      // Revert on error
+      loadAdminData();
+    }
+  };
+
   const filteredIssues = showOnlyPending 
     ? issues.filter(issue => !issue.is_estimated)
     : issues;
 
-  // If not admin, show access denied
   if (!isAdmin && !loading) {
     return (
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
@@ -225,6 +345,12 @@ function Admin() {
         </Alert>
       )}
 
+      {addUserMessage && (
+        <Alert severity="success" sx={{ mb: 2 }}>
+          {addUserMessage}
+        </Alert>
+      )}
+
       {/* Tab Navigation */}
       <Paper sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
@@ -241,7 +367,6 @@ function Admin() {
             📊 System Overview
           </Typography>
 
-          {/* Stats Cards */}
           {stats && (
             <Grid container spacing={2} sx={{ mb: 4 }}>
               <Grid item xs={12} sm={6} md={3}>
@@ -287,7 +412,6 @@ function Admin() {
             </Grid>
           )}
 
-          {/* Estimation Statistics */}
           <Typography variant="h6" sx={{ mb: 2, mt: 3 }}>
             ⚠️ Issues with Conflicting Estimates
           </Typography>
@@ -334,9 +458,16 @@ function Admin() {
       {/* TAB 1: USERS MANAGEMENT */}
       {activeTab === 1 && (
         <Box>
-          <Typography variant="h6" sx={{ mb: 2 }}>
-            👥 User Management
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">👥 User Management</Typography>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleOpenAddUserDialog}
+            >
+              Add User
+            </Button>
+          </Box>
 
           {users.length > 0 ? (
             <TableContainer component={Paper}>
@@ -365,23 +496,35 @@ function Admin() {
                         )}
                       </TableCell>
                       <TableCell align="center">
-                        {user.is_active ? (
-                          <Chip label="Active" color="success" size="small" />
-                        ) : (
-                          <Chip label="Inactive" variant="outlined" size="small" />
-                        )}
+                        <Chip
+                          label={user.is_active ? 'Active' : 'Inactive'}
+                          color={user.is_active ? 'success' : 'default'}
+                          size="small"
+                          onClick={() => handleToggleUserStatus(user)}
+                          sx={{ cursor: 'pointer' }}
+                        />
                       </TableCell>
                       <TableCell align="right">{user.total_estimates}</TableCell>
                       <TableCell align="right">{user.participated_sessions}</TableCell>
                       <TableCell align="center">
-                        <Button
-                          startIcon={<VpnKeyIcon />}
-                          size="small"
-                          variant="outlined"
-                          onClick={() => handleOpenResetDialog(user)}
-                        >
-                          Reset Password
-                        </Button>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <Button
+                            startIcon={<VpnKeyIcon />}
+                            size="small"
+                            variant="outlined"
+                            onClick={() => handleOpenResetDialog(user)}
+                          >
+                            Reset
+                          </Button>
+                          <IconButton
+                            size="small"
+                            color="error"
+                            onClick={() => handleOpenDeleteDialog(user)}
+                            title="Delete user"
+                          >
+                            <DeleteIcon fontSize="small" />
+                          </IconButton>
+                        </Box>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -473,26 +616,16 @@ function Admin() {
         </Box>
       )}
 
-      {/* Password Reset Dialog */}
+      {/* Reset Password Dialog */}
       <Dialog open={resetDialog} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
-        <DialogTitle>
-          🔐 Reset Password
-        </DialogTitle>
+        <DialogTitle>🔐 Reset Password</DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
           <Typography variant="body2" sx={{ mb: 2 }}>
             Resetting password for: <strong>{selectedUser?.email}</strong>
           </Typography>
 
-          {resetMessage && (
-            <Alert severity="success" sx={{ mb: 2 }}>
-              {resetMessage}
-            </Alert>
-          )}
-          {resetError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {resetError}
-            </Alert>
-          )}
+          {resetMessage && <Alert severity="success" sx={{ mb: 2 }}>{resetMessage}</Alert>}
+          {resetError && <Alert severity="error" sx={{ mb: 2 }}>{resetError}</Alert>}
 
           <TextField
             fullWidth
@@ -515,9 +648,7 @@ function Admin() {
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseResetDialog} disabled={resetLoading}>
-            Cancel
-          </Button>
+          <Button onClick={handleCloseResetDialog} disabled={resetLoading}>Cancel</Button>
           <Button
             onClick={handleResetPassword}
             variant="contained"
@@ -525,6 +656,82 @@ function Admin() {
             startIcon={resetLoading ? <CircularProgress size={20} /> : <VpnKeyIcon />}
           >
             {resetLoading ? 'Resetting...' : 'Reset Password'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add User Dialog */}
+      <Dialog open={addUserDialog} onClose={handleCloseAddUserDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>👥 Add New User</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {addUserMessage && <Alert severity="success" sx={{ mb: 2 }}>{addUserMessage}</Alert>}
+          {addUserError && <Alert severity="error" sx={{ mb: 2 }}>{addUserError}</Alert>}
+
+          <TextField
+            fullWidth
+            label="Email"
+            type="email"
+            value={newUserData.email}
+            onChange={(e) => setNewUserData({ ...newUserData, email: e.target.value })}
+            disabled={addUserLoading}
+            margin="normal"
+            placeholder="user@example.com"
+          />
+          <TextField
+            fullWidth
+            label="Full Name"
+            value={newUserData.full_name}
+            onChange={(e) => setNewUserData({ ...newUserData, full_name: e.target.value })}
+            disabled={addUserLoading}
+            margin="normal"
+            placeholder="John Doe"
+          />
+          <TextField
+            fullWidth
+            label="Password"
+            type="password"
+            value={newUserData.password}
+            onChange={(e) => setNewUserData({ ...newUserData, password: e.target.value })}
+            disabled={addUserLoading}
+            margin="normal"
+            placeholder="Minimum 8 characters"
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseAddUserDialog} disabled={addUserLoading}>Cancel</Button>
+          <Button
+            onClick={handleAddUser}
+            variant="contained"
+            disabled={addUserLoading}
+            startIcon={addUserLoading ? <CircularProgress size={20} /> : <AddIcon />}
+          >
+            {addUserLoading ? 'Creating...' : 'Create User'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteDialog} onClose={handleCloseDeleteDialog} maxWidth="sm" fullWidth>
+        <DialogTitle>⚠️ Delete User</DialogTitle>
+        <DialogContent sx={{ pt: 2 }}>
+          {deleteError && <Alert severity="error" sx={{ mb: 2 }}>{deleteError}</Alert>}
+          <Typography>
+            Are you sure you want to delete user <strong>{userToDelete?.email}</strong>?
+          </Typography>
+          <Typography variant="caption" color="error" sx={{ display: 'block', mt: 1 }}>
+            This action cannot be undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseDeleteDialog} disabled={deleteLoading}>Cancel</Button>
+          <Button
+            onClick={handleDeleteUser}
+            variant="contained"
+            color="error"
+            disabled={deleteLoading}
+            startIcon={deleteLoading ? <CircularProgress size={20} /> : <DeleteIcon />}
+          >
+            {deleteLoading ? 'Deleting...' : 'Delete'}
           </Button>
         </DialogActions>
       </Dialog>
