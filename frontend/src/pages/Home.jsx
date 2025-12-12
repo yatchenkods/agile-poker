@@ -14,8 +14,12 @@ import {
   DialogActions,
   Alert,
   CircularProgress,
+  FormControlLabel,
+  Checkbox,
+  Divider,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import GetAppIcon from '@mui/icons-material/GetApp';
 import { api } from '../services/api';
 
 function Home() {
@@ -27,9 +31,14 @@ function Home() {
     name: '',
     description: '',
     project_key: '',
+    sprint_name: '',
+    import_from_jira: false,
   });
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importedIssues, setImportedIssues] = useState([]);
+  const [importStats, setImportStats] = useState(null);
 
   useEffect(() => {
     loadSessions();
@@ -46,6 +55,46 @@ function Home() {
     }
   };
 
+  const handleImportFromJira = async () => {
+    if (!formData.project_key) {
+      setError('Please enter Jira Project Key');
+      return;
+    }
+
+    if (!formData.sprint_name) {
+      setError('Please enter Sprint Name');
+      return;
+    }
+
+    setImportLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.post('/jira/import-sprint', {
+        project_key: formData.project_key.toUpperCase(),
+        sprint_name: formData.sprint_name,
+      });
+
+      setImportedIssues(response.data.issues || []);
+      setImportStats({
+        total: response.data.count || 0,
+        status: response.data.status,
+      });
+
+      if (response.data.issues?.length === 0) {
+        setError('No issues found in the specified sprint');
+      }
+    } catch (err) {
+      console.error('Failed to import from Jira:', err);
+      setError(
+        err.response?.data?.detail ||
+        'Failed to import issues from Jira. Please check Project Key and Sprint Name.'
+      );
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
   const handleCreateSession = async () => {
     if (!formData.name) {
       setError('Session name is required');
@@ -56,10 +105,11 @@ function Home() {
     setError(null);
 
     try {
-      await api.post('/sessions/', {
+      const response = await api.post('/sessions/', {
         name: formData.name,
         description: formData.description,
         project_key: formData.project_key || undefined,
+        import_issues: importedIssues.map(issue => issue.key),
       });
 
       setOpenDialog(false);
@@ -67,7 +117,11 @@ function Home() {
         name: '',
         description: '',
         project_key: '',
+        sprint_name: '',
+        import_from_jira: false,
       });
+      setImportedIssues([]);
+      setImportStats(null);
       loadSessions();
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -84,6 +138,8 @@ function Home() {
   const handleDialogOpen = () => {
     setOpenDialog(true);
     setError(null);
+    setImportedIssues([]);
+    setImportStats(null);
   };
 
   const handleDialogClose = () => {
@@ -92,7 +148,11 @@ function Home() {
       name: '',
       description: '',
       project_key: '',
+      sprint_name: '',
+      import_from_jira: false,
     });
+    setImportedIssues([]);
+    setImportStats(null);
     setError(null);
   };
 
@@ -150,37 +210,136 @@ function Home() {
             </Alert>
           )}
 
-          <TextField
-            label="Session Name"
-            fullWidth
-            margin="normal"
-            placeholder="Sprint Planning Session"
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            disabled={creating}
-            autoFocus
-          />
-          <TextField
-            label="Description"
-            fullWidth
-            margin="normal"
-            multiline
-            rows={3}
-            placeholder="Session description..."
-            value={formData.description}
-            onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            disabled={creating}
-          />
-          <TextField
-            label="Jira Project Key (optional)"
-            fullWidth
-            margin="normal"
-            placeholder="e.g., PROJ"
-            value={formData.project_key}
-            onChange={(e) => setFormData({ ...formData, project_key: e.target.value })}
-            disabled={creating}
-            helperText="Project key from Jira (e.g., PROJ, ABC)"
-          />
+          {/* Basic Info Section */}
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
+              Session Details
+            </Typography>
+            <TextField
+              label="Session Name"
+              fullWidth
+              margin="normal"
+              placeholder="Sprint Review Planning"
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              disabled={importLoading || creating}
+              autoFocus
+            />
+            <TextField
+              label="Description"
+              fullWidth
+              margin="normal"
+              multiline
+              rows={2}
+              placeholder="Session description..."
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              disabled={importLoading || creating}
+            />
+          </Box>
+
+          <Divider sx={{ mb: 3 }} />
+
+          {/* Jira Import Section */}
+          <Box>
+            <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
+              📋 Import from Jira (Optional)
+            </Typography>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.import_from_jira}
+                  onChange={(e) => {
+                    setFormData({ ...formData, import_from_jira: e.target.checked });
+                    setError(null);
+                  }}
+                  disabled={importLoading || creating}
+                />
+              }
+              label="Import issues from Jira sprint"
+            />
+
+            {formData.import_from_jira && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                <TextField
+                  label="Jira Project Key"
+                  fullWidth
+                  margin="normal"
+                  placeholder="e.g., PROJ"
+                  value={formData.project_key}
+                  onChange={(e) => setFormData({ ...formData, project_key: e.target.value })}
+                  disabled={importLoading}
+                  helperText="Example: PROJ, ABC, etc."
+                />
+                <TextField
+                  label="Sprint Name"
+                  fullWidth
+                  margin="normal"
+                  placeholder="e.g., Sprint 1, Q1 2025"
+                  value={formData.sprint_name}
+                  onChange={(e) => setFormData({ ...formData, sprint_name: e.target.value })}
+                  disabled={importLoading}
+                  helperText="The exact sprint name from Jira"
+                />
+
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
+                  onClick={handleImportFromJira}
+                  disabled={importLoading}
+                  sx={{ mt: 2 }}
+                >
+                  {importLoading ? 'Importing...' : 'Import Issues'}
+                </Button>
+              </Box>
+            )}
+
+            {/* Import Results */}
+            {importStats && (
+              <Alert severity="success" sx={{ mt: 2 }}>
+                ✅ Successfully imported {importStats.total} issue{importStats.total !== 1 ? 's' : ''}
+              </Alert>
+            )}
+
+            {importedIssues.length > 0 && (
+              <Box sx={{ mt: 2, maxHeight: 200, overflow: 'auto' }}>
+                <Typography variant="caption" color="textSecondary">
+                  Issues to import ({importedIssues.length}):
+                </Typography>
+                <Box sx={{ mt: 1, display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {importedIssues.slice(0, 10).map((issue) => (
+                    <Box
+                      key={issue.key}
+                      sx={{
+                        bgcolor: '#e8f5e9',
+                        p: 0.5,
+                        px: 1,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                      }}
+                    >
+                      {issue.key}
+                    </Box>
+                  ))}
+                  {importedIssues.length > 10 && (
+                    <Box
+                      sx={{
+                        bgcolor: '#f5f5f5',
+                        p: 0.5,
+                        px: 1,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                      }}
+                    >
+                      +{importedIssues.length - 10} more
+                    </Box>
+                  )}
+                </Box>
+              </Box>
+            )}
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDialogClose} disabled={creating}>
