@@ -2,7 +2,7 @@
 
 import requests
 import logging
-from typing import List, Dict, Optional
+from typing import List, Dict
 from app.config import settings
 
 logger = logging.getLogger(__name__)
@@ -15,10 +15,14 @@ class JiraService:
         self.jira_url = settings.jira_url
         self.jira_username = settings.jira_username
         self.jira_api_token = settings.jira_api_token
-        self.auth = (self.jira_username, self.jira_api_token) if self.jira_username and self.jira_api_token else None
-        
-        logger.debug(f"JiraService initialized with URL: {self.jira_url}")
-        logger.debug(f"JiraService auth configured: {bool(self.auth)}")
+        self.auth = (
+            (self.jira_username, self.jira_api_token)
+            if self.jira_username and self.jira_api_token
+            else None
+        )
+
+        logger.debug("JiraService initialized with URL: %s", self.jira_url)
+        logger.debug("JiraService auth configured: %s", bool(self.auth))
 
     def get_sprints_for_project(self, project_key: str) -> List[Dict]:
         """
@@ -31,11 +35,11 @@ class JiraService:
             List of sprints with board_id
         """
         try:
-            logger.info(f"Getting all sprints for project {project_key}")
+            logger.info("Getting all sprints for project %s", project_key)
             sprints = self._get_project_sprints(project_key)
             return sprints
         except Exception as e:
-            logger.error(f"Error getting sprints for project: {e}", exc_info=True)
+            logger.error("Error getting sprints for project: %s", e, exc_info=True)
             return []
 
     def get_sprint_issues(self, project_key: str, sprint_name: str) -> List[Dict]:
@@ -50,39 +54,66 @@ class JiraService:
             List of issues with keys and titles
         """
         try:
-            logger.info(f"Fetching issues for project {project_key}, sprint {sprint_name}")
-            
+            logger.info(
+                "Fetching issues for project %s, sprint %s",
+                project_key,
+                sprint_name,
+            )
+
             # First, get all sprints for the project
             sprints = self._get_project_sprints(project_key)
             if not sprints:
-                logger.warning(f"No sprints found for project {project_key}")
+                logger.warning("No sprints found for project %s", project_key)
                 return []
 
-            logger.debug(f"Found {len(sprints)} sprints for project {project_key}")
-            logger.debug(f"Sprints: {[f'{s.get('name')} (board {s.get('board_id')})' for s in sprints]}")
+            logger.debug(
+                "Found %d sprints for project %s", len(sprints), project_key
+            )
+            sprint_descriptions = [
+                f"{s.get('name')} (board {s.get('board_id')})" for s in sprints
+            ]
+            logger.debug("Sprints: %s", sprint_descriptions)
 
             # Find sprint by name (case-insensitive)
             sprint = next(
-                (s for s in sprints if s.get('name', '').lower() == sprint_name.lower()),
-                None
+                (
+                    s
+                    for s in sprints
+                    if s.get("name", "").lower() == sprint_name.lower()
+                ),
+                None,
             )
 
             if not sprint:
-                logger.warning(f"Sprint '{sprint_name}' not found in project {project_key}")
-                logger.info(f"Available sprints: {[s.get('name') for s in sprints]}")
+                logger.warning(
+                    "Sprint '%s' not found in project %s",
+                    sprint_name,
+                    project_key,
+                )
+                available = [s.get("name") for s in sprints]
+                logger.info("Available sprints: %s", available)
                 return []
 
-            sprint_id = sprint.get('id')
-            board_id = sprint.get('board_id')
-            logger.debug(f"Found sprint '{sprint_name}' with ID {sprint_id} on board {board_id}")
+            sprint_id = sprint.get("id")
+            board_id = sprint.get("board_id")
+            logger.debug(
+                "Found sprint '%s' with ID %s on board %s",
+                sprint_name,
+                sprint_id,
+                board_id,
+            )
 
             # Get issues in sprint
             issues = self._get_sprint_issues_by_id(sprint_id, project_key)
-            logger.info(f"Fetched {len(issues)} issues from sprint '{sprint_name}'")
+            logger.info(
+                "Fetched %d issues from sprint '%s'",
+                len(issues),
+                sprint_name,
+            )
             return issues
 
         except Exception as e:
-            logger.error(f"Error fetching sprint issues: {e}", exc_info=True)
+            logger.error("Error fetching sprint issues: %s", e, exc_info=True)
             return []
 
     def _get_project_sprints(self, project_key: str) -> List[Dict]:
@@ -96,65 +127,98 @@ class JiraService:
             List of sprints with board information
         """
         try:
-            logger.debug(f"Getting sprints for project {project_key}")
-            
+            logger.debug("Getting sprints for project %s", project_key)
+
             # Get all boards for the project
-            all_sprints = []
+            all_sprints: List[Dict] = []
             boards_url = f"{self.jira_url}/rest/agile/1.0/board"
-            
+
             # Use projectKey to filter boards by project
-            params = {'projectKey': project_key, 'maxResults': 50}
-            
-            logger.debug(f"Requesting boards for project {project_key} from {boards_url}")
+            params = {"projectKey": project_key, "maxResults": 50}
+
+            logger.debug(
+                "Requesting boards for project %s from %s",
+                project_key,
+                boards_url,
+            )
             response = requests.get(
                 boards_url,
                 params=params,
                 auth=self.auth,
-                timeout=10
+                timeout=10,
             )
             response.raise_for_status()
 
             boards_data = response.json()
-            boards = boards_data.get('values', [])
-            logger.info(f"Found {len(boards)} board(s) for project {project_key}")
-            logger.debug(f"Boards: {[f'{b.get('name')} (id: {b.get('id')}, type: {b.get('type')})' for b in boards]}")
-            
+            boards = boards_data.get("values", [])
+            logger.info(
+                "Found %d board(s) for project %s",
+                len(boards),
+                project_key,
+            )
+
+            board_descriptions = [
+                f"{b.get('name')} (id: {b.get('id')}, type: {b.get('type')})"
+                for b in boards
+            ]
+            logger.debug("Boards: %s", board_descriptions)
+
             if not boards:
-                logger.warning(f"No boards found for project {project_key}")
+                logger.warning("No boards found for project %s", project_key)
                 return []
 
             # Get sprints from each board (they should all be for this project)
             for board in boards:
-                board_id = board.get('id')
-                board_name = board.get('name')
-                board_type = board.get('type')
-                logger.debug(f"Processing board {board_id} ({board_name}, type: {board_type})")
-                
+                board_id = board.get("id")
+                board_name = board.get("name")
+                board_type = board.get("type")
+                logger.debug(
+                    "Processing board %s (%s, type: %s)",
+                    board_id,
+                    board_name,
+                    board_type,
+                )
+
                 try:
                     sprints = self._get_board_sprints(board_id)
-                    logger.info(f"Found {len(sprints)} sprint(s) on board {board_name}")
-                    
-                    # Add board_id to each sprint and verify they belong to the project
+                    logger.info(
+                        "Found %d sprint(s) on board %s",
+                        len(sprints),
+                        board_name,
+                    )
+
+                    # Add board_id to each sprint
                     for sprint in sprints:
-                        sprint['board_id'] = board_id
-                    
+                        sprint["board_id"] = board_id
+
                     all_sprints.extend(sprints)
                 except Exception as e:
-                    logger.warning(f"Error fetching sprints for board {board_id}: {e}")
+                    logger.warning(
+                        "Error fetching sprints for board %s: %s",
+                        board_id,
+                        e,
+                    )
                     continue
-            
-            logger.info(f"Total sprints found for project {project_key}: {len(all_sprints)}")
+
+            logger.info(
+                "Total sprints found for project %s: %d",
+                project_key,
+                len(all_sprints),
+            )
             if all_sprints:
-                sprint_names = [f'{s.get('name')} (state: {s.get('state')})' for s in all_sprints]
-                logger.debug(f"Available sprints: {sprint_names}")
-            
+                sprint_names = [
+                    f"{s.get('name')} (state: {s.get('state')})"
+                    for s in all_sprints
+                ]
+                logger.debug("Available sprints: %s", sprint_names)
+
             return all_sprints
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"HTTP error fetching sprints: {e}", exc_info=True)
+            logger.error("HTTP error fetching sprints: %s", e, exc_info=True)
             return []
         except Exception as e:
-            logger.error(f"Error fetching sprints: {e}", exc_info=True)
+            logger.error("Error fetching sprints: %s", e, exc_info=True)
             return []
 
     def _get_board_sprints(self, board_id: int) -> List[Dict]:
@@ -169,34 +233,47 @@ class JiraService:
         """
         try:
             sprints_url = f"{self.jira_url}/rest/agile/1.0/board/{board_id}/sprint"
-            params = {'maxResults': 50}
-            
-            logger.debug(f"Requesting sprints from {sprints_url}")
-            
+            params = {"maxResults": 50}
+
+            logger.debug("Requesting sprints from %s", sprints_url)
+
             response = requests.get(
                 sprints_url,
                 params=params,
                 auth=self.auth,
-                timeout=10
+                timeout=10,
             )
             response.raise_for_status()
 
-            sprints = response.json().get('values', [])
-            logger.debug(f"Found {len(sprints)} sprints on board {board_id}")
-            
+            sprints = response.json().get("values", [])
+            logger.debug("Found %d sprints on board %s", len(sprints), board_id)
+
             for sprint in sprints:
-                logger.debug(f"  Sprint: {sprint.get('name')} (id: {sprint.get('id')}, state: {sprint.get('state')})")
-            
+                logger.debug(
+                    "  Sprint: %s (id: %s, state: %s)",
+                    sprint.get("name"),
+                    sprint.get("id"),
+                    sprint.get("state"),
+                )
+
             return sprints
 
         except requests.exceptions.RequestException as e:
-            logger.warning(f"Error fetching sprints for board {board_id}: {e}")
+            logger.warning(
+                "Error fetching sprints for board %s: %s", board_id, e
+            )
             return []
         except Exception as e:
-            logger.warning(f"Unexpected error fetching sprints for board {board_id}: {e}")
+            logger.warning(
+                "Unexpected error fetching sprints for board %s: %s",
+                board_id,
+                e,
+            )
             return []
 
-    def _get_sprint_issues_by_id(self, sprint_id: int, project_key: str) -> List[Dict]:
+    def _get_sprint_issues_by_id(
+        self, sprint_id: int, project_key: str
+    ) -> List[Dict]:
         """
         Get issues for a specific sprint
 
@@ -208,53 +285,73 @@ class JiraService:
             List of issues
         """
         try:
-            issues_url = f"{self.jira_url}/rest/agile/1.0/sprint/{sprint_id}/issue"
-            params = {
-                'maxResults': 100,
-            }
-            
-            logger.debug(f"Requesting issues from sprint {sprint_id}")
+            issues_url = (
+                f"{self.jira_url}/rest/agile/1.0/sprint/{sprint_id}/issue"
+            )
+            params = {"maxResults": 100}
+
+            logger.debug("Requesting issues from sprint %s", sprint_id)
             response = requests.get(
                 issues_url,
                 params=params,
                 auth=self.auth,
-                timeout=10
+                timeout=10,
             )
             response.raise_for_status()
 
-            issues_data = response.json().get('issues', [])
-            logger.debug(f"Found {len(issues_data)} total issues in sprint {sprint_id}")
-            
-            issues = []
+            issues_data = response.json().get("issues", [])
+            logger.debug(
+                "Found %d total issues in sprint %s",
+                len(issues_data),
+                sprint_id,
+            )
+
+            issues: List[Dict] = []
             skipped_count = 0
-            
+
             for issue in issues_data:
                 # Filter by project key to ensure we only get issues from this project
-                issue_key = issue.get('key', '')
-                
-                # Check if issue belongs to the project
-                if not issue_key.startswith(project_key + '-'):
-                    logger.debug(f"Skipping issue {issue_key} - belongs to different project (expected {project_key}-*)")
+                issue_key = issue.get("key", "")
+
+                if not issue_key.startswith(project_key + "-"):
+                    logger.debug(
+                        "Skipping issue %s - belongs to different project (expected %s-*)",
+                        issue_key,
+                        project_key,
+                    )
                     skipped_count += 1
                     continue
-                
+
                 issue_obj = {
-                    'key': issue_key,
-                    'title': issue.get('fields', {}).get('summary', ''),
-                    'description': issue.get('fields', {}).get('description', ''),
-                    'issue_type': issue.get('fields', {}).get('issuetype', {}).get('name', ''),
+                    "key": issue_key,
+                    "title": issue.get("fields", {}).get("summary", ""),
+                    "description": issue.get("fields", {})
+                    .get("description", ""),
+                    "issue_type": issue.get("fields", {})
+                    .get("issuetype", {})
+                    .get("name", ""),
                 }
                 issues.append(issue_obj)
-                logger.debug(f"Parsed issue: {issue_obj['key']} - {issue_obj['title']}")
+                logger.debug(
+                    "Parsed issue: %s - %s", issue_obj["key"], issue_obj["title"]
+                )
 
-            logger.info(f"Sprint {sprint_id}: {len(issues)} issues for project {project_key}, {skipped_count} issues from other projects skipped")
+            logger.info(
+                "Sprint %s: %d issues for project %s, %d issues from other projects skipped",
+                sprint_id,
+                len(issues),
+                project_key,
+                skipped_count,
+            )
             return issues
 
         except requests.exceptions.RequestException as e:
-            logger.error(f"HTTP error fetching sprint issues: {e}", exc_info=True)
+            logger.error(
+                "HTTP error fetching sprint issues: %s", e, exc_info=True
+            )
             return []
         except Exception as e:
-            logger.error(f"Error fetching sprint issues: {e}", exc_info=True)
+            logger.error("Error fetching sprint issues: %s", e, exc_info=True)
             return []
 
     def validate_connection(self) -> bool:
@@ -266,7 +363,9 @@ class JiraService:
         """
         try:
             if not self.auth:
-                logger.error("Jira authentication not configured (missing username or API token)")
+                logger.error(
+                    "Jira authentication not configured (missing username or API token)"
+                )
                 return False
 
             if not self.jira_url:
@@ -274,31 +373,46 @@ class JiraService:
                 return False
 
             url = f"{self.jira_url}/rest/api/2/myself"
-            logger.debug(f"Validating Jira connection to {url}")
-            
+            logger.debug("Validating Jira connection to %s", url)
+
             response = requests.get(
                 url,
                 auth=self.auth,
-                timeout=5
+                timeout=5,
             )
-            
+
             if response.status_code == 200:
                 user_data = response.json()
-                logger.info(f"Jira connection successful. User: {user_data.get('emailAddress')}")
+                logger.info(
+                    "Jira connection successful. User: %s",
+                    user_data.get("emailAddress"),
+                )
                 return True
             else:
-                logger.error(f"Jira connection failed with status {response.status_code}: {response.text}")
+                logger.error(
+                    "Jira connection failed with status %s: %s",
+                    response.status_code,
+                    response.text,
+                )
                 return False
 
         except requests.exceptions.Timeout:
-            logger.error(f"Jira connection timeout - cannot reach {self.jira_url}")
+            logger.error(
+                "Jira connection timeout - cannot reach %s", self.jira_url
+            )
             return False
         except requests.exceptions.ConnectionError:
-            logger.error(f"Jira connection error - cannot reach {self.jira_url}")
+            logger.error(
+                "Jira connection error - cannot reach %s", self.jira_url
+            )
             return False
         except requests.exceptions.RequestException as e:
-            logger.error(f"Jira HTTP error: {e}", exc_info=True)
+            logger.error("Jira HTTP error: %s", e, exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"Unexpected error validating Jira connection: {e}", exc_info=True)
+            logger.error(
+                "Unexpected error validating Jira connection: %s",
+                e,
+                exc_info=True,
+            )
             return False
