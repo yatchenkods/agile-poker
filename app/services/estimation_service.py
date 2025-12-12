@@ -137,22 +137,28 @@ class EstimationService:
         if not issue or issue.is_estimated:
             return False
         
-        # Get session participants count
+        # Get session estimators count
         from app.models.session import Session as SessionModel
         session = db.query(SessionModel).filter(SessionModel.id == issue.session_id).first()
         if not session:
             return False
         
-        participants_count = len(session.participants)
-        if participants_count == 0:
+        # Get estimators count (people assigned to estimate tasks)
+        # If no estimators assigned, use all participants as fallback
+        if session.estimators and len(session.estimators) > 0:
+            estimators_count = len(session.estimators)
+        else:
+            estimators_count = len(session.participants) if session.participants else 0
+        
+        if estimators_count == 0:
             return False
         
         # Get all estimates (both regular and joker)
         estimates = db.query(Estimate).filter(Estimate.issue_id == issue_id).all()
         estimate_count = len(estimates)
         
-        # Check if all participants have voted (including joker votes)
-        if estimate_count < participants_count:
+        # Check if all estimators have voted (including joker votes)
+        if estimate_count < estimators_count:
             return False
         
         # Only consider non-joker estimates for consensus calculation
@@ -165,8 +171,8 @@ class EstimationService:
         points = [e.story_points for e in valid_estimates]
         variance = max(points) - min(points)
         
-        # Check if consensus: max - min <= 2 points AND all participants have voted
-        if variance <= 2 and estimate_count == participants_count:
+        # Check if consensus: max - min <= 2 points AND all estimators have voted
+        if variance <= 2 and estimate_count >= estimators_count:
             # Calculate average and round to nearest valid score
             avg = sum(points) / len(points)
             valid_scores = [1, 2, 4, 8, 16]
