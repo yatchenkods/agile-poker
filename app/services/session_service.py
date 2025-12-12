@@ -36,6 +36,46 @@ class SessionService:
         return session_dict
 
     @staticmethod
+    def _enrich_session_detail(session: SessionModel) -> dict:
+        """
+        Enrich session with full details including participants, estimators, and issues.
+        
+        Returns SessionDetailResponse-compatible dict with:
+        - All basic session fields
+        - Full participants list
+        - Full estimators list (required for client-side filtering)
+        - Full issues list
+        """
+        from app.schemas.user import UserResponse
+        from app.schemas.issue import IssueResponse
+        
+        session_dict = {
+            "id": session.id,
+            "name": session.name,
+            "description": session.description,
+            "project_key": session.project_key,
+            "status": session.status,
+            "created_by_id": session.created_by_id,
+            "created_at": session.created_at,
+            "updated_at": session.updated_at,
+            "closed_at": session.closed_at,
+            "participant_count": len(session.participants) if session.participants else 0,
+            "issue_count": len(session.issues) if session.issues else 0,
+            "estimator_count": len(session.estimators) if session.estimators else 0,
+            # Include full lists for detail response
+            "participants": [
+                UserResponse.from_orm(p).dict() for p in (session.participants or [])
+            ],
+            "estimators": [
+                UserResponse.from_orm(e).dict() for e in (session.estimators or [])
+            ],
+            "issues": [
+                IssueResponse.from_orm(i).dict() for i in (session.issues or [])
+            ],
+        }
+        return session_dict
+
+    @staticmethod
     def create_session(db: Session, session_data: SessionCreate, creator_id: int) -> dict:
         """Create a new session"""
         db_session = SessionModel(
