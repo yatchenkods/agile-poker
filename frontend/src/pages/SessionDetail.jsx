@@ -18,12 +18,12 @@ import {
   Tooltip,
   Checkbox,
   FormControlLabel,
+  Divider,
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
-import PersonIcon from '@mui/icons-material/Person';
 
 import { api } from '../services/api';
 import SessionBoard from '../components/SessionBoard';
@@ -47,6 +47,10 @@ function SessionDetail() {
   });
   const [editLoading, setEditLoading] = useState(false);
   const [editError, setEditError] = useState('');
+  const [allUsers, setAllUsers] = useState([]);
+  const [selectedEstimators, setSelectedEstimators] = useState([]);
+  const [estimatorsLoading, setEstimatorsLoading] = useState(false);
+  const [estimatorsError, setEstimatorsError] = useState('');
 
   // Import issues dialog state
   const [importDialogOpen, setImportDialogOpen] = useState(false);
@@ -57,13 +61,6 @@ function SessionDetail() {
   const [importError, setImportError] = useState('');
   const [importedIssues, setImportedIssues] = useState([]);
   const [importStats, setImportStats] = useState(null);
-
-  // Estimators dialog state
-  const [estimatorsDialogOpen, setEstimatorsDialogOpen] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [selectedEstimators, setSelectedEstimators] = useState([]);
-  const [estimatorsLoading, setEstimatorsLoading] = useState(false);
-  const [estimatorsError, setEstimatorsError] = useState('');
 
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -123,7 +120,7 @@ function SessionDetail() {
   };
 
   // Edit session handlers
-  const handleEditOpen = () => {
+  const handleEditOpen = async () => {
     if (session) {
       setEditFormData({
         name: session.name,
@@ -131,6 +128,25 @@ function SessionDetail() {
         project_key: session.project_key || '',
       });
       setEditError('');
+      setEstimatorsError('');
+      
+      // Load all users and current estimators
+      setEstimatorsLoading(true);
+      try {
+        const usersRes = await api.get('/users');
+        setAllUsers(usersRes.data);
+        
+        if (session && session.estimators) {
+          const estimatorIds = session.estimators.map(e => e.id);
+          setSelectedEstimators(estimatorIds);
+        }
+      } catch (err) {
+        console.error('Failed to load users:', err);
+        setEstimatorsError('Failed to load users');
+      } finally {
+        setEstimatorsLoading(false);
+      }
+      
       setEditDialogOpen(true);
     }
   };
@@ -138,6 +154,8 @@ function SessionDetail() {
   const handleEditClose = () => {
     setEditDialogOpen(false);
     setEditFormData({ name: '', description: '', project_key: '' });
+    setSelectedEstimators([]);
+    setAllUsers([]);
   };
 
   const handleEditSave = async () => {
@@ -150,11 +168,30 @@ function SessionDetail() {
     setEditError('');
 
     try {
+      // Update session info
       const response = await api.put(`/sessions/${sessionId}`, {
         name: editFormData.name,
         description: editFormData.description || null,
       });
       setSession(response.data);
+
+      // Update estimators
+      const currentEstimatorIds = session.estimators?.map(e => e.id) || [];
+      
+      // Add new estimators
+      const toAdd = selectedEstimators.filter(id => !currentEstimatorIds.includes(id));
+      for (const userId of toAdd) {
+        await api.post(`/sessions/${sessionId}/estimators/${userId}`);
+      }
+      
+      // Remove estimators
+      const toRemove = currentEstimatorIds.filter(id => !selectedEstimators.includes(id));
+      for (const userId of toRemove) {
+        await api.delete(`/sessions/${sessionId}/estimators/${userId}`);
+      }
+
+      // Reload session data
+      await loadSessionData();
       handleEditClose();
     } catch (err) {
       console.error('Failed to update session:', err);
@@ -162,6 +199,14 @@ function SessionDetail() {
     } finally {
       setEditLoading(false);
     }
+  };
+
+  const handleEstimatorToggle = (userId) => {
+    setSelectedEstimators(prev => 
+      prev.includes(userId)
+        ? prev.filter(id => id !== userId)
+        : [...prev, userId]
+    );
   };
 
   // Import issues handlers
@@ -217,73 +262,6 @@ function SessionDetail() {
       setImportError(err.response?.data?.detail || 'Failed to import issues');
     } finally {
       setImportLoading(false);
-    }
-  };
-
-  // Estimators handlers
-  const handleEstimatorsOpen = async () => {
-    setEstimatorsError('');
-    setEstimatorsLoading(true);
-    
-    try {
-      // Load all users
-      const usersRes = await api.get('/users');
-      setAllUsers(usersRes.data);
-      
-      // Load current estimators
-      if (session && session.estimators) {
-        const estimatorIds = session.estimators.map(e => e.id);
-        setSelectedEstimators(estimatorIds);
-      }
-      setEstimatorsDialogOpen(true);
-    } catch (err) {
-      console.error('Failed to load users:', err);
-      setEstimatorsError('Failed to load users');
-    } finally {
-      setEstimatorsLoading(false);
-    }
-  };
-
-  const handleEstimatorsClose = () => {
-    setEstimatorsDialogOpen(false);
-    setSelectedEstimators([]);
-  };
-
-  const handleEstimatorToggle = (userId) => {
-    setSelectedEstimators(prev => 
-      prev.includes(userId)
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
-  };
-
-  const handleEstimatorsSave = async () => {
-    setEstimatorsLoading(true);
-    setEstimatorsError('');
-
-    try {
-      const currentEstimatorIds = session.estimators?.map(e => e.id) || [];
-      
-      // Add new estimators
-      const toAdd = selectedEstimators.filter(id => !currentEstimatorIds.includes(id));
-      for (const userId of toAdd) {
-        await api.post(`/sessions/${sessionId}/estimators/${userId}`);
-      }
-      
-      // Remove estimators
-      const toRemove = currentEstimatorIds.filter(id => !selectedEstimators.includes(id));
-      for (const userId of toRemove) {
-        await api.delete(`/sessions/${sessionId}/estimators/${userId}`);
-      }
-
-      // Reload session data
-      await loadSessionData();
-      handleEstimatorsClose();
-    } catch (err) {
-      console.error('Failed to update estimators:', err);
-      setEstimatorsError(err.response?.data?.detail || 'Failed to update estimators');
-    } finally {
-      setEstimatorsLoading(false);
     }
   };
 
@@ -389,13 +367,6 @@ function SessionDetail() {
               >
                 Add Issues
               </Button>
-              <Button
-                variant="outlined"
-                startIcon={<PersonIcon />}
-                onClick={handleEstimatorsOpen}
-              >
-                Manage Estimators
-              </Button>
             </Box>
           )}
 
@@ -423,7 +394,7 @@ function SessionDetail() {
             margin="normal"
             value={editFormData.name}
             onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
-            disabled={editLoading}
+            disabled={editLoading || estimatorsLoading}
             autoFocus
           />
           <TextField
@@ -434,7 +405,7 @@ function SessionDetail() {
             rows={3}
             value={editFormData.description}
             onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
-            disabled={editLoading}
+            disabled={editLoading || estimatorsLoading}
           />
           <TextField
             label="Project Key (optional)"
@@ -442,18 +413,55 @@ function SessionDetail() {
             margin="normal"
             value={editFormData.project_key}
             onChange={(e) => setEditFormData({ ...editFormData, project_key: e.target.value })}
-            disabled={editLoading}
+            disabled={editLoading || estimatorsLoading}
             placeholder="e.g., DEVOPS"
           />
+          
+          <Divider sx={{ my: 3 }} />
+          
+          <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 600 }}>
+            Session Estimators
+          </Typography>
+          {estimatorsError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {estimatorsError}
+            </Alert>
+          )}
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
+            Select users who should estimate issues in this session. Only selected users' votes will count for consensus.
+          </Typography>
+          {estimatorsLoading && !allUsers.length ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+              <CircularProgress size={30} />
+            </Box>
+          ) : allUsers.length > 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: 300, overflow: 'auto' }}>
+              {allUsers.map(user => (
+                <FormControlLabel
+                  key={user.id}
+                  control={
+                    <Checkbox
+                      checked={selectedEstimators.includes(user.id)}
+                      onChange={() => handleEstimatorToggle(user.id)}
+                      disabled={editLoading}
+                    />
+                  }
+                  label={`${user.full_name} (${user.email})`}
+                />
+              ))}
+            </Box>
+          ) : (
+            <Typography color="textSecondary">No users available</Typography>
+          )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleEditClose} disabled={editLoading}>
+          <Button onClick={handleEditClose} disabled={editLoading || estimatorsLoading}>
             Cancel
           </Button>
           <Button
             onClick={handleEditSave}
             variant="contained"
-            disabled={editLoading || !editFormData.name.trim()}
+            disabled={editLoading || estimatorsLoading || !editFormData.name.trim()}
             startIcon={editLoading ? <CircularProgress size={20} /> : undefined}
           >
             {editLoading ? 'Saving...' : 'Save'}
@@ -503,55 +511,6 @@ function SessionDetail() {
             startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
           >
             {importLoading ? 'Importing...' : 'Import'}
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Manage Estimators Dialog */}
-      <Dialog open={estimatorsDialogOpen} onClose={handleEstimatorsClose} maxWidth="sm" fullWidth>
-        <DialogTitle>Manage Session Estimators</DialogTitle>
-        <DialogContent sx={{ pt: 2 }}>
-          {estimatorsError && (
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {estimatorsError}
-            </Alert>
-          )}
-          <Typography variant="body2" color="textSecondary" sx={{ mb: 2 }}>
-            Select users who should estimate issues in this session. Only selected users' votes will count for consensus.
-          </Typography>
-          {estimatorsLoading && !allUsers.length ? (
-            <CircularProgress />
-          ) : allUsers.length > 0 ? (
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {allUsers.map(user => (
-                <FormControlLabel
-                  key={user.id}
-                  control={
-                    <Checkbox
-                      checked={selectedEstimators.includes(user.id)}
-                      onChange={() => handleEstimatorToggle(user.id)}
-                      disabled={estimatorsLoading}
-                    />
-                  }
-                  label={`${user.full_name} (${user.email})`}
-                />
-              ))}
-            </Box>
-          ) : (
-            <Typography color="textSecondary">No users available</Typography>
-          )}
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={handleEstimatorsClose} disabled={estimatorsLoading}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleEstimatorsSave}
-            variant="contained"
-            disabled={estimatorsLoading}
-            startIcon={estimatorsLoading ? <CircularProgress size={20} /> : undefined}
-          >
-            {estimatorsLoading ? 'Saving...' : 'Save'}
           </Button>
         </DialogActions>
       </Dialog>
