@@ -22,26 +22,31 @@ import {
   CircularProgress,
   Chip,
   IconButton,
-  ButtonGroup,
-  Divider,
+  Tabs,
+  Tab,
+  Navigate,
 } from '@mui/material';
 import WarningIcon from '@mui/icons-material/Warning';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import PeopleIcon from '@mui/icons-material/People';
-import EventIcon from '@mui/icons-material/Event';
+import AssignmentIcon from '@mui/icons-material/Assignment';
+import LockIcon from '@mui/icons-material/Lock';
 import { api } from '../services/api';
 
 function Admin() {
-  const [activeTab, setActiveTab] = useState('stats'); // 'stats', 'users', 'sessions'
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [activeTab, setActiveTab] = useState(0); // 0=Statistics, 1=Users, 2=Issues
   const [stats, setStats] = useState(null);
-  const [conflicts, setConflicts] = useState([]);
-  const [usersStats, setUsersStats] = useState([]);
+  const [issues, setIssues] = useState([]);
   const [users, setUsers] = useState([]);
-  const [sessions, setSessions] = useState([]);
+  const [estimationStats, setEstimationStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // Reset password dialog
   const [resetDialog, setResetDialog] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
   const [newPassword, setNewPassword] = useState('');
@@ -51,64 +56,68 @@ function Admin() {
   const [resetError, setResetError] = useState(null);
 
   useEffect(() => {
-    console.log('Admin component mounted, loading data...');
-    loadAdminData();
+    checkAdminAccess();
   }, []);
 
-  const loadAdminData = async () => {
-    console.log('Loading admin data...');
+  const checkAdminAccess = async () => {
     try {
-      console.log('Fetching stats...');
+      const userRes = await api.get('/auth/me');
+      setCurrentUser(userRes.data);
+      setIsAdmin(userRes.data.is_admin);
+      
+      if (!userRes.data.is_admin) {
+        setError('Access denied. Admin rights required.');
+        setLoading(false);
+        return;
+      }
+      
+      // If admin, load data
+      await loadAdminData();
+    } catch (err) {
+      console.error('Failed to check admin access:', err);
+      setError('Failed to verify admin access');
+      setLoading(false);
+    }
+  };
+
+  const loadAdminData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Load statistics
       const statsRes = await api.get('/admin/stats');
-      console.log('Stats response:', statsRes.data);
       setStats(statsRes.data);
 
-      console.log('Fetching conflicting estimates...');
-      const conflictsRes = await api.get('/admin/conflicting-estimates');
-      console.log('Conflicts response:', conflictsRes.data);
-      setConflicts(conflictsRes.data || []);
-
-      console.log('Fetching users stats...');
+      // Load users
       const usersRes = await api.get('/admin/users-stats');
-      console.log('Users response:', usersRes.data);
-      setUsersStats(usersRes.data || []);
-
-      // Extract users from usersStats
       if (usersRes.data && Array.isArray(usersRes.data)) {
-        console.log('Processing users array, length:', usersRes.data.length);
-        const userList = usersRes.data.map((stat) => {
-          console.log('Processing user:', stat);
-          return {
-            id: stat.user_id,
-            email: stat.email,
-            full_name: stat.full_name,
-            is_active: stat.is_active,
-            is_admin: stat.is_admin || false,
-            total_estimates: stat.total_estimates,
-            participated_sessions: stat.participated_sessions,
-          };
-        });
-        console.log('Final users list:', userList);
+        const userList = usersRes.data.map((stat) => ({
+          id: stat.user_id,
+          email: stat.email,
+          full_name: stat.full_name,
+          is_active: stat.is_active,
+          is_admin: stat.is_admin || false,
+          total_estimates: stat.total_estimates,
+          participated_sessions: stat.participated_sessions,
+        }));
         setUsers(userList);
-      } else {
-        console.log('Users response is not an array or empty');
-        setUsers([]);
       }
 
-      // Fetch sessions
-      console.log('Fetching sessions...');
-      const sessionsRes = await api.get('/sessions/');
-      console.log('Sessions response:', sessionsRes.data);
-      setSessions(sessionsRes.data || []);
+      // Load issues with estimation stats
+      const issuesRes = await api.get('/issues/');
+      if (issuesRes.data && Array.isArray(issuesRes.data)) {
+        setIssues(issuesRes.data);
+      }
 
-      setError(null);
+      // Load estimation statistics (issues with vote status)
+      const estimationRes = await api.get('/admin/conflicting-estimates');
+      setEstimationStats(estimationRes.data || []);
     } catch (err) {
       console.error('Failed to load admin data:', err);
-      console.error('Error response:', err.response);
-      setError(err.response?.data?.detail || err.message || 'Failed to load admin data');
+      setError(err.response?.data?.detail || 'Failed to load admin data');
     } finally {
       setLoading(false);
-      console.log('Admin data loading finished');
     }
   };
 
@@ -130,7 +139,6 @@ function Admin() {
     setResetError(null);
     setResetMessage(null);
 
-    // Validation
     if (!newPassword) {
       setResetError('Password is required');
       return;
@@ -149,12 +157,12 @@ function Admin() {
     setResetLoading(true);
 
     try {
-      const response = await api.post('/admin/reset-password', {
+      await api.post('/admin/reset-password', {
         user_id: selectedUser.id,
         new_password: newPassword,
       });
 
-      setResetMessage(`✅ ${response.data.message}`);
+      setResetMessage(`✅ Password reset successfully for ${selectedUser.email}`);
       setTimeout(() => {
         handleCloseResetDialog();
         loadAdminData();
@@ -167,11 +175,39 @@ function Admin() {
     }
   };
 
+  // If not admin, show access denied
+  if (!isAdmin && !loading) {
+    return (
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '400px' }}>
+        <Card sx={{ maxWidth: 400, textAlign: 'center' }}>
+          <CardContent>
+            <LockIcon sx={{ fontSize: 60, color: 'error.main', mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Access Denied
+            </Typography>
+            <Typography color="textSecondary" paragraph>
+              This section is only available to administrators.
+            </Typography>
+          </CardContent>
+        </Card>
+      </Box>
+    );
+  }
+
+  if (loading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
   return (
     <Box>
+      {/* Header */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">🛠️ Admin Dashboard</Typography>
-        <IconButton onClick={loadAdminData} size="small" title="Refresh">
+        <Typography variant="h4">🛠️ Admin Panel</Typography>
+        <IconButton onClick={loadAdminData} title="Refresh">
           <RefreshIcon />
         </IconButton>
       </Box>
@@ -183,49 +219,19 @@ function Admin() {
       )}
 
       {/* Tab Navigation */}
-      <Box sx={{ mb: 3 }}>
-        <ButtonGroup variant="outlined" size="large">
-          <Button
-            startIcon={<BarChartIcon />}
-            onClick={() => setActiveTab('stats')}
-            variant={activeTab === 'stats' ? 'contained' : 'outlined'}
-            sx={activeTab === 'stats' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
-          >
-            Statistics
-          </Button>
-          <Button
-            startIcon={<PeopleIcon />}
-            onClick={() => setActiveTab('users')}
-            variant={activeTab === 'users' ? 'contained' : 'outlined'}
-            sx={activeTab === 'users' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
-          >
-            Users
-          </Button>
-          <Button
-            startIcon={<EventIcon />}
-            onClick={() => setActiveTab('sessions')}
-            variant={activeTab === 'sessions' ? 'contained' : 'outlined'}
-            sx={activeTab === 'sessions' ? { backgroundColor: '#1976d2', color: 'white' } : {}}
-          >
-            Sessions
-          </Button>
-        </ButtonGroup>
-      </Box>
+      <Paper sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+          <Tab icon={<BarChartIcon />} iconPosition="start" label="Statistics" />
+          <Tab icon={<PeopleIcon />} iconPosition="start" label="Users" />
+          <Tab icon={<AssignmentIcon />} iconPosition="start" label="Issues" />
+        </Tabs>
+      </Paper>
 
-      <Divider sx={{ mb: 3 }} />
-
-      {/* Loading indicator */}
-      {loading && (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', my: 4 }}>
-          <CircularProgress />
-        </Box>
-      )}
-
-      {/* STATISTICS TAB */}
-      {activeTab === 'stats' && (
+      {/* TAB 0: STATISTICS */}
+      {activeTab === 0 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
-            📊 Overview Statistics
+            📊 System Overview
           </Typography>
 
           {/* Stats Cards */}
@@ -235,7 +241,7 @@ function Admin() {
                 <Card>
                   <CardContent>
                     <Typography color="textSecondary" gutterBottom>
-                      Users
+                      Total Users
                     </Typography>
                     <Typography variant="h5">{stats.total_users}</Typography>
                   </CardContent>
@@ -245,7 +251,7 @@ function Admin() {
                 <Card>
                   <CardContent>
                     <Typography color="textSecondary" gutterBottom>
-                      Sessions
+                      Active Sessions
                     </Typography>
                     <Typography variant="h5">{stats.total_sessions}</Typography>
                   </CardContent>
@@ -255,7 +261,7 @@ function Admin() {
                 <Card>
                   <CardContent>
                     <Typography color="textSecondary" gutterBottom>
-                      Issues
+                      Total Issues
                     </Typography>
                     <Typography variant="h5">{stats.total_issues}</Typography>
                   </CardContent>
@@ -265,7 +271,7 @@ function Admin() {
                 <Card>
                   <CardContent>
                     <Typography color="textSecondary" gutterBottom>
-                      Estimates
+                      Total Estimates
                     </Typography>
                     <Typography variant="h5">{stats.total_estimates}</Typography>
                   </CardContent>
@@ -274,66 +280,69 @@ function Admin() {
             </Grid>
           )}
 
-          {loading && !stats && <CircularProgress />}
+          {/* Estimation Statistics */}
+          <Typography variant="h6" sx={{ mb: 2, mt: 3 }}>
+            ⚠️ Issues with Conflicting Estimates
+          </Typography>
 
-          {/* Conflicting Estimates */}
-          {conflicts.length > 0 && (
-            <Box sx={{ mb: 4 }}>
-              <Typography variant="h6" gutterBottom>
-                <WarningIcon sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Issues with Conflicting Estimates ({conflicts.length})
-              </Typography>
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow sx={{ backgroundColor: '#ffe0e0' }}>
-                      <TableCell>Jira Key</TableCell>
-                      <TableCell>Title</TableCell>
-                      <TableCell align="right">Min</TableCell>
-                      <TableCell align="right">Max</TableCell>
-                      <TableCell align="right">Variance</TableCell>
-                      <TableCell align="right">Votes</TableCell>
+          {estimationStats.length > 0 ? (
+            <TableContainer component={Paper}>
+              <Table>
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: '#fff3e0' }}>
+                    <TableCell><strong>Issue</strong></TableCell>
+                    <TableCell><strong>Title</strong></TableCell>
+                    <TableCell align="center"><strong>Estimates</strong></TableCell>
+                    <TableCell align="center"><strong>Range</strong></TableCell>
+                    <TableCell align="center"><strong>Variance</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {estimationStats.map((stat) => (
+                    <TableRow key={stat.issue_id}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>{stat.jira_key}</TableCell>
+                      <TableCell>{stat.title}</TableCell>
+                      <TableCell align="center">
+                        <Chip label={stat.estimates_count} size="small" />
+                      </TableCell>
+                      <TableCell align="center">{stat.min_points} - {stat.max_points}</TableCell>
+                      <TableCell align="center">
+                        <Chip 
+                          label={stat.variance} 
+                          color={stat.variance > 4 ? 'error' : 'warning'}
+                          size="small" 
+                        />
+                      </TableCell>
                     </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {conflicts.map((conflict) => (
-                      <TableRow key={conflict.issue_id}>
-                        <TableCell>{conflict.jira_key}</TableCell>
-                        <TableCell>{conflict.title}</TableCell>
-                        <TableCell align="right">{conflict.min_points}</TableCell>
-                        <TableCell align="right">{conflict.max_points}</TableCell>
-                        <TableCell align="right">{conflict.variance}</TableCell>
-                        <TableCell align="right">{conflict.estimates_count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Box>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          ) : (
+            <Alert severity="success">✅ All estimates have reached consensus!</Alert>
           )}
         </Box>
       )}
 
-      {/* USERS TAB */}
-      {activeTab === 'users' && (
+      {/* TAB 1: USERS MANAGEMENT */}
+      {activeTab === 1 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
             👥 User Management
           </Typography>
 
-          {loading && !users.length && <CircularProgress />}
-
-          {users && users.length > 0 ? (
+          {users.length > 0 ? (
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                    <TableCell>Email</TableCell>
-                    <TableCell>Full Name</TableCell>
-                    <TableCell align="center">Role</TableCell>
-                    <TableCell align="center">Status</TableCell>
-                    <TableCell align="right">Estimates</TableCell>
-                    <TableCell align="center">Actions</TableCell>
+                    <TableCell><strong>Email</strong></TableCell>
+                    <TableCell><strong>Full Name</strong></TableCell>
+                    <TableCell align="center"><strong>Role</strong></TableCell>
+                    <TableCell align="center"><strong>Status</strong></TableCell>
+                    <TableCell align="right"><strong>Estimates</strong></TableCell>
+                    <TableCell align="right"><strong>Sessions</strong></TableCell>
+                    <TableCell align="center"><strong>Actions</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -356,6 +365,7 @@ function Admin() {
                         )}
                       </TableCell>
                       <TableCell align="right">{user.total_estimates}</TableCell>
+                      <TableCell align="right">{user.participated_sessions}</TableCell>
                       <TableCell align="center">
                         <Button
                           startIcon={<VpnKeyIcon />}
@@ -372,51 +382,49 @@ function Admin() {
               </Table>
             </TableContainer>
           ) : (
-            !loading && <Alert severity="info">No users found</Alert>
+            <Alert severity="info">No users found</Alert>
           )}
         </Box>
       )}
 
-      {/* SESSIONS TAB */}
-      {activeTab === 'sessions' && (
+      {/* TAB 2: ISSUES MANAGEMENT */}
+      {activeTab === 2 && (
         <Box>
           <Typography variant="h6" sx={{ mb: 2 }}>
-            📅 Active Sessions
+            📋 Issue Management
           </Typography>
 
-          {loading && !sessions.length && <CircularProgress />}
-
-          {sessions && sessions.length > 0 ? (
+          {issues.length > 0 ? (
             <TableContainer component={Paper}>
               <Table>
                 <TableHead>
                   <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
-                    <TableCell>Session Name</TableCell>
-                    <TableCell>Created By</TableCell>
-                    <TableCell align="center">Issues</TableCell>
-                    <TableCell align="center">Status</TableCell>
-                    <TableCell>Created At</TableCell>
+                    <TableCell><strong>Issue Key</strong></TableCell>
+                    <TableCell><strong>Title</strong></TableCell>
+                    <TableCell><strong>Session</strong></TableCell>
+                    <TableCell align="center"><strong>Current Estimate</strong></TableCell>
+                    <TableCell align="center"><strong>Status</strong></TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {sessions.map((session) => (
-                    <TableRow key={session.id}>
-                      <TableCell sx={{ fontWeight: 'bold' }}>{session.name}</TableCell>
-                      <TableCell>{session.created_by_name || 'Unknown'}</TableCell>
+                  {issues.map((issue) => (
+                    <TableRow key={issue.id}>
+                      <TableCell sx={{ fontWeight: 'bold' }}>{issue.jira_key}</TableCell>
+                      <TableCell>{issue.title}</TableCell>
+                      <TableCell>{issue.session_name || 'N/A'}</TableCell>
                       <TableCell align="center">
-                        <Chip label={session.issues_count || 0} size="small" />
-                      </TableCell>
-                      <TableCell align="center">
-                        {session.is_active ? (
-                          <Chip label="Active" color="success" size="small" />
+                        {issue.story_points ? (
+                          <Chip label={`${issue.story_points} pts`} color="success" />
                         ) : (
-                          <Chip label="Closed" variant="outlined" size="small" />
+                          <Chip label="Not set" variant="outlined" />
                         )}
                       </TableCell>
-                      <TableCell>
-                        {new Date(session.created_at).toLocaleDateString()} 
-                        {' '}
-                        {new Date(session.created_at).toLocaleTimeString()}
+                      <TableCell align="center">
+                        {issue.is_estimated ? (
+                          <Chip label="Estimated" color="success" size="small" />
+                        ) : (
+                          <Chip label="Pending" variant="outlined" size="small" />
+                        )}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -424,7 +432,7 @@ function Admin() {
               </Table>
             </TableContainer>
           ) : (
-            !loading && <Alert severity="info">No sessions found</Alert>
+            <Alert severity="info">No issues found</Alert>
           )}
         </Box>
       )}
@@ -432,9 +440,13 @@ function Admin() {
       {/* Password Reset Dialog */}
       <Dialog open={resetDialog} onClose={handleCloseResetDialog} maxWidth="sm" fullWidth>
         <DialogTitle>
-          🔐 Reset Password for {selectedUser?.email}
+          🔐 Reset Password
         </DialogTitle>
         <DialogContent sx={{ pt: 2 }}>
+          <Typography variant="body2" sx={{ mb: 2 }}>
+            Resetting password for: <strong>{selectedUser?.email}</strong>
+          </Typography>
+
           {resetMessage && (
             <Alert severity="success" sx={{ mb: 2 }}>
               {resetMessage}
@@ -445,6 +457,7 @@ function Admin() {
               {resetError}
             </Alert>
           )}
+
           <TextField
             fullWidth
             label="New Password"
