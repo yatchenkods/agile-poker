@@ -113,9 +113,22 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
           minHeight: 0
         }}
       >
-        <Typography variant="h6" gutterBottom sx={{ mb: 1.5 }}>
-          📋 Issues ({issues.length})
-        </Typography>
+        {/* Sticky Header */}
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            backgroundColor: 'white',
+            zIndex: 10,
+            pb: 1.5,
+            mb: 0.5,
+            borderBottom: '2px solid #e0e0e0',
+          }}
+        >
+          <Typography variant="h6" sx={{ mb: 0 }}>
+            📋 Issues ({issues.length})
+          </Typography>
+        </Box>
         
         {issues.length === 0 ? (
           <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, textAlign: 'center' }}>
@@ -133,7 +146,6 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
               display: 'flex',
               flexDirection: 'column',
               gap: 1,
-              pr: 0.5, // Right padding for scrollbar
               pr: '8px',
               '&::-webkit-scrollbar': {
                 width: '8px',
@@ -171,7 +183,7 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
                     },
                     transition: 'all 0.2s',
                     border: status.isFinal ? '2px solid #4caf50' : '1px solid #e0e0e0',
-                    flexShrink: 0, // CRITICAL: Prevent card from shrinking
+                    flexShrink: 0,
                   }}
                 >
                   <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
@@ -254,13 +266,32 @@ function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null
         }}
       >
         {selectedIssue ? (
-          <Box sx={{ flex: 1, overflowY: 'auto', pr: 1 }}>
-            <EstimationCard
-              issue={selectedIssue}
-              session={session}
-              onEstimateSubmitted={handleEstimateSubmitted}
-            />
-          </Box>
+          <>
+            {/* Sticky Title for EstimationCard */}
+            <Box
+              sx={{
+                position: 'sticky',
+                top: 0,
+                backgroundColor: 'white',
+                zIndex: 10,
+                pb: 1.5,
+                mb: 1,
+                borderBottom: '2px solid #e0e0e0',
+              }}
+            >
+              <Typography variant="h6" sx={{ mb: 0 }}>
+                {selectedIssue.jira_key}: {selectedIssue.title}
+              </Typography>
+            </Box>
+            
+            <Box sx={{ flex: 1, overflowY: 'auto', pr: 1 }}>
+              <EstimationCard
+                issue={selectedIssue}
+                session={session}
+                onEstimateSubmitted={handleEstimateSubmitted}
+              />
+            </Box>
+          </>
         ) : (
           <Typography color="textSecondary">Select an issue to start estimating</Typography>
         )}
