@@ -17,9 +17,11 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  Link,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
+import HelpIcon from '@mui/icons-material/Help';
 import { api } from '../services/api';
 
 function Home() {
@@ -39,6 +41,8 @@ function Home() {
   const [importLoading, setImportLoading] = useState(false);
   const [importedIssues, setImportedIssues] = useState([]);
   const [importStats, setImportStats] = useState(null);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTest, setConnectionTest] = useState(null);
 
   useEffect(() => {
     loadSessions();
@@ -52,6 +56,22 @@ function Home() {
       console.error('Failed to load sessions:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleTestJiraConnection = async () => {
+    setTestingConnection(true);
+    setConnectionTest(null);
+    setError(null);
+
+    try {
+      const response = await api.get('/jira/test-connection');
+      setConnectionTest(response.data);
+    } catch (err) {
+      console.error('Failed to test Jira connection:', err);
+      setError('Failed to test Jira connection');
+    } finally {
+      setTestingConnection(false);
     }
   };
 
@@ -122,6 +142,7 @@ function Home() {
       });
       setImportedIssues([]);
       setImportStats(null);
+      setConnectionTest(null);
       loadSessions();
     } catch (err) {
       console.error('Failed to create session:', err);
@@ -140,6 +161,7 @@ function Home() {
     setError(null);
     setImportedIssues([]);
     setImportStats(null);
+    setConnectionTest(null);
   };
 
   const handleDialogClose = () => {
@@ -154,6 +176,7 @@ function Home() {
     setImportedIssues([]);
     setImportStats(null);
     setError(null);
+    setConnectionTest(null);
   };
 
   if (loading) {
@@ -210,7 +233,6 @@ function Home() {
             </Alert>
           )}
 
-          {/* Basic Info Section */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 'bold' }}>
               Session Details
@@ -240,7 +262,6 @@ function Home() {
 
           <Divider sx={{ mb: 3 }} />
 
-          {/* Jira Import Section */}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 2, fontWeight: 'bold' }}>
               📋 Import from Jira (Optional)
@@ -282,20 +303,52 @@ function Home() {
                   helperText="The exact sprint name from Jira"
                 />
 
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
-                  onClick={handleImportFromJira}
-                  disabled={importLoading}
-                  sx={{ mt: 2 }}
-                >
-                  {importLoading ? 'Importing...' : 'Import Issues'}
-                </Button>
+                <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    startIcon={importLoading ? <CircularProgress size={20} /> : <GetAppIcon />}
+                    onClick={handleImportFromJira}
+                    disabled={importLoading}
+                  >
+                    {importLoading ? 'Importing...' : 'Import Issues'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={testingConnection ? <CircularProgress size={20} /> : <HelpIcon />}
+                    onClick={handleTestJiraConnection}
+                    disabled={testingConnection}
+                    sx={{ minWidth: 120 }}
+                  >
+                    {testingConnection ? 'Testing...' : 'Test'}
+                  </Button>
+                </Box>
               </Box>
             )}
 
-            {/* Import Results */}
+            {connectionTest && (
+              <Alert
+                severity={connectionTest.connected ? 'success' : 'warning'}
+                sx={{ mt: 2 }}
+              >
+                <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+                  {connectionTest.message}
+                </Typography>
+                {connectionTest.details?.possible_issues && (
+                  <Box sx={{ ml: 2, mt: 1 }}>
+                    <Typography variant="caption" display="block">
+                      Possible issues:
+                    </Typography>
+                    {connectionTest.details.possible_issues.map((issue, idx) => (
+                      <Typography key={idx} variant="caption" display="block" sx={{ ml: 1 }}>
+                        - {issue}
+                      </Typography>
+                    ))}
+                  </Box>
+                )}
+              </Alert>
+            )}
+
             {importStats && (
               <Alert severity="success" sx={{ mt: 2 }}>
                 ✅ Successfully imported {importStats.total} issue{importStats.total !== 1 ? 's' : ''}
