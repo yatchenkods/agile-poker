@@ -1,19 +1,18 @@
 """Jira integration service"""
 
 import requests
-import os
 from typing import List, Dict, Optional
-from datetime import datetime
+from app.config import settings
 
 
 class JiraService:
     """Service for Jira integration"""
 
     def __init__(self):
-        self.jira_url = os.getenv('JIRA_URL', 'https://jira.example.com')
-        self.jira_username = os.getenv('JIRA_USERNAME', '')
-        self.jira_api_token = os.getenv('JIRA_API_TOKEN', '')
-        self.auth = (self.jira_username, self.jira_api_token) if self.jira_username else None
+        self.jira_url = settings.jira_base_url
+        self.jira_username = settings.jira_username
+        self.jira_api_token = settings.jira_api_token
+        self.auth = (self.jira_username, self.jira_api_token) if self.jira_username and self.jira_api_token else None
 
     def get_sprint_issues(self, project_key: str, sprint_name: str) -> List[Dict]:
         """
