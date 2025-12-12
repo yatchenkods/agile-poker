@@ -17,11 +17,13 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
 import ErrorIcon from '@mui/icons-material/Error';
+import LockIcon from '@mui/icons-material/Lock';
 
 import { api } from '../services/api';
 
@@ -29,6 +31,7 @@ function Home() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -46,8 +49,18 @@ function Home() {
   const [failedIssues, setFailedIssues] = useState([]);
 
   useEffect(() => {
-    loadSessions();
+    // Load current user and sessions
+    Promise.all([loadSessions(), loadCurrentUser()]);
   }, []);
+
+  const loadCurrentUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setCurrentUser(res.data);
+    } catch (err) {
+      console.error('Failed to load current user:', err);
+    }
+  };
 
   const loadSessions = async () => {
     try {
@@ -205,6 +218,8 @@ function Home() {
     return <Typography>Loading sessions...</Typography>;
   }
 
+  const isAdmin = currentUser?.is_admin;
+
   return (
     <Box>
       <Box
@@ -216,9 +231,23 @@ function Home() {
         }}
       >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
-          New Session
-        </Button>
+        {isAdmin ? (
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
+            New Session
+          </Button>
+        ) : (
+          <Tooltip title="Only administrators can create new sessions">
+            <Box>
+              <Button
+                variant="contained"
+                startIcon={<AddIcon />}
+                disabled={true}
+              >
+                New Session
+              </Button>
+            </Box>
+          </Tooltip>
+        )}
       </Box>
 
       <Grid container spacing={2}>
