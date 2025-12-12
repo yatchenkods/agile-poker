@@ -222,7 +222,7 @@ function Home() {
               placeholder="Sprint Review Planning"
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              disabled={importing || creatingLOADING}
+              disabled={importLoading || creating}
             />
             <TextField
               label="Description"
@@ -233,7 +233,7 @@ function Home() {
               placeholder="Session description..."
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              disabled={importing || creatingLOADING}
+              disabled={importLoading || creating}
             />
           </Box>
 
