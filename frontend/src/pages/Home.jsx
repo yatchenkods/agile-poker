@@ -329,7 +329,7 @@ function Home() {
                   {session.description}
                 </Typography>
                 <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                  <Typography variant="caption">👥 {session.participant_count}</Typography>
+                  <Typography variant="caption">👥 {session.estimator_count}</Typography>
                   <Typography variant="caption">📋 {session.issue_count}</Typography>
                 </Box>
               </CardContent>
