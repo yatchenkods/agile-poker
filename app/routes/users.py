@@ -47,7 +47,7 @@ async def update_user(
     db: Session = Depends(get_db),
 ):
     """Update user profile"""
-    if current_user.id != user_id:
+    if current_user.id != user_id and not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Cannot update other users",
