@@ -70,6 +70,7 @@ class AdminService:
                 "total_estimates": total_estimates,
                 "participated_sessions": sessions_count,
                 "is_active": user.is_active,
+                "is_admin": user.is_admin,
             })
         
         return stats
