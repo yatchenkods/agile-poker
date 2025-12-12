@@ -58,6 +58,9 @@ class JiraService:
                 logger.warning(f"No sprints found for project {project_key}")
                 return []
 
+            logger.debug(f"Found {len(sprints)} sprints for project {project_key}")
+            logger.debug(f"Sprints: {[f'{s.get('name')} (board {s.get('board_id')})' for s in sprints]}")
+
             # Find sprint by name (case-insensitive)
             sprint = next(
                 (s for s in sprints if s.get('name', '').lower() == sprint_name.lower()),
@@ -66,15 +69,16 @@ class JiraService:
 
             if not sprint:
                 logger.warning(f"Sprint '{sprint_name}' not found in project {project_key}")
-                logger.debug(f"Available sprints: {[s.get('name') for s in sprints]}")
+                logger.info(f"Available sprints: {[s.get('name') for s in sprints]}")
                 return []
 
             sprint_id = sprint.get('id')
-            logger.debug(f"Found sprint {sprint_name} with ID {sprint_id}")
+            board_id = sprint.get('board_id')
+            logger.debug(f"Found sprint '{sprint_name}' with ID {sprint_id} on board {board_id}")
 
             # Get issues in sprint
             issues = self._get_sprint_issues_by_id(sprint_id, project_key)
-            logger.info(f"Fetched {len(issues)} issues from sprint {sprint_name}")
+            logger.info(f"Fetched {len(issues)} issues from sprint '{sprint_name}'")
             return issues
 
         except Exception as e:
@@ -83,7 +87,7 @@ class JiraService:
 
     def _get_project_sprints(self, project_key: str) -> List[Dict]:
         """
-        Get all sprints for a project by checking all boards
+        Get all sprints for a project by checking all boards for that project
 
         Args:
             project_key: Jira project key
@@ -94,12 +98,14 @@ class JiraService:
         try:
             logger.debug(f"Getting sprints for project {project_key}")
             
-            # Try to get all boards for the project
+            # Get all boards for the project
             all_sprints = []
             boards_url = f"{self.jira_url}/rest/agile/1.0/board"
+            
+            # Use projectKey to filter boards by project
             params = {'projectKey': project_key, 'maxResults': 50}
             
-            logger.debug(f"Requesting boards from {boards_url}")
+            logger.debug(f"Requesting boards for project {project_key} from {boards_url}")
             response = requests.get(
                 boards_url,
                 params=params,
@@ -108,14 +114,16 @@ class JiraService:
             )
             response.raise_for_status()
 
-            boards = response.json().get('values', [])
+            boards_data = response.json()
+            boards = boards_data.get('values', [])
             logger.info(f"Found {len(boards)} board(s) for project {project_key}")
+            logger.debug(f"Boards: {[f'{b.get('name')} (id: {b.get('id')}, type: {b.get('type')})' for b in boards]}")
             
             if not boards:
                 logger.warning(f"No boards found for project {project_key}")
                 return []
 
-            # Get sprints from each board
+            # Get sprints from each board (they should all be for this project)
             for board in boards:
                 board_id = board.get('id')
                 board_name = board.get('name')
@@ -126,7 +134,7 @@ class JiraService:
                     sprints = self._get_board_sprints(board_id)
                     logger.info(f"Found {len(sprints)} sprint(s) on board {board_name}")
                     
-                    # Add board_id to each sprint
+                    # Add board_id to each sprint and verify they belong to the project
                     for sprint in sprints:
                         sprint['board_id'] = board_id
                     
@@ -135,9 +143,10 @@ class JiraService:
                     logger.warning(f"Error fetching sprints for board {board_id}: {e}")
                     continue
             
-            logger.info(f"Total sprints found: {len(all_sprints)}")
+            logger.info(f"Total sprints found for project {project_key}: {len(all_sprints)}")
             if all_sprints:
-                logger.debug(f"Available sprints: {[s.get('name') for s in all_sprints]}")
+                sprint_names = [f'{s.get('name')} (state: {s.get('state')})' for s in all_sprints]
+                logger.debug(f"Available sprints: {sprint_names}")
             
             return all_sprints
 
@@ -174,6 +183,10 @@ class JiraService:
 
             sprints = response.json().get('values', [])
             logger.debug(f"Found {len(sprints)} sprints on board {board_id}")
+            
+            for sprint in sprints:
+                logger.debug(f"  Sprint: {sprint.get('name')} (id: {sprint.get('id')}, state: {sprint.get('state')})")
+            
             return sprints
 
         except requests.exceptions.RequestException as e:
@@ -189,7 +202,7 @@ class JiraService:
 
         Args:
             sprint_id: Sprint ID
-            project_key: Jira project key
+            project_key: Jira project key (for filtering)
 
         Returns:
             List of issues
@@ -200,7 +213,7 @@ class JiraService:
                 'maxResults': 100,
             }
             
-            logger.debug(f"Requesting issues from {issues_url}")
+            logger.debug(f"Requesting issues from sprint {sprint_id}")
             response = requests.get(
                 issues_url,
                 params=params,
@@ -210,14 +223,19 @@ class JiraService:
             response.raise_for_status()
 
             issues_data = response.json().get('issues', [])
-            logger.debug(f"Found {len(issues_data)} issues in sprint {sprint_id}")
+            logger.debug(f"Found {len(issues_data)} total issues in sprint {sprint_id}")
             
             issues = []
+            skipped_count = 0
+            
             for issue in issues_data:
                 # Filter by project key to ensure we only get issues from this project
                 issue_key = issue.get('key', '')
+                
+                # Check if issue belongs to the project
                 if not issue_key.startswith(project_key + '-'):
-                    logger.debug(f"Skipping issue {issue_key} - not in project {project_key}")
+                    logger.debug(f"Skipping issue {issue_key} - belongs to different project (expected {project_key}-*)")
+                    skipped_count += 1
                     continue
                 
                 issue_obj = {
@@ -229,6 +247,7 @@ class JiraService:
                 issues.append(issue_obj)
                 logger.debug(f"Parsed issue: {issue_obj['key']} - {issue_obj['title']}")
 
+            logger.info(f"Sprint {sprint_id}: {len(issues)} issues for project {project_key}, {skipped_count} issues from other projects skipped")
             return issues
 
         except requests.exceptions.RequestException as e:
