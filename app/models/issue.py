@@ -1,7 +1,7 @@
 """Issue (Jira task) model"""
 
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, DateTime, Text, ForeignKey, Float, Boolean
 from sqlalchemy.orm import relationship
 
 from app.database import Base
@@ -20,7 +20,7 @@ class Issue(Base):
     description = Column(Text, nullable=True)
     story_points = Column(Integer, nullable=True)  # Final estimated story points
     story_points_before = Column(Integer, nullable=True)  # Previous story points
-    is_estimated = Column(Integer, default=0)  # Flag if final estimate was set
+    is_estimated = Column(Boolean, default=False)  # Flag if final estimate was set
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
