@@ -26,13 +26,13 @@ class JiraService:
 
     def get_issues_by_keys(self, issue_keys: List[str]) -> Tuple[List[Dict], List[Dict]]:
         """
-        Get issues from Jira by their keys
+        Get issues from Jira by their keys, filtering out already estimated issues
 
         Args:
             issue_keys: List of Jira issue keys (e.g., ['DEVOPS-123', 'DEVOPS-456'])
 
         Returns:
-            Tuple of (successful_issues, failed_issues_with_reasons)
+            Tuple of (successful_issues_without_estimates, failed_issues_with_reasons)
         """
         if not issue_keys:
             logger.warning("No issue keys provided")
@@ -50,13 +50,28 @@ class JiraService:
             # Fetch each issue individually (more reliable than JQL for exact keys)
             issues: List[Dict] = []
             failed_issues: List[Dict] = []
+            estimated_issues: List[str] = []
 
             for key in normalized_keys:
                 try:
                     result = self._get_single_issue(key)
                     if result["success"]:
-                        issues.append(result["issue"])
-                        logger.debug("Successfully fetched issue: %s", key)
+                        issue = result["issue"]
+                        
+                        # Check if issue already has story points/estimate
+                        story_points = self._extract_story_points(result["raw_data"])
+                        
+                        if story_points is not None:
+                            estimated_issues.append(key)
+                            logger.debug(
+                                "Issue %s already estimated (story points: %s), skipping",
+                                key,
+                                story_points
+                            )
+                            continue
+                        
+                        issues.append(issue)
+                        logger.debug("Successfully fetched unestimated issue: %s", key)
                     else:
                         failed_issues.append({
                             "key": key,
@@ -83,17 +98,61 @@ class JiraService:
                     len(failed_issues),
                     len(normalized_keys),
                 )
+            
+            if estimated_issues:
+                logger.info(
+                    "Skipped %d already estimated issue(s): %s",
+                    len(estimated_issues),
+                    estimated_issues
+                )
 
             logger.info(
-                "Successfully fetched %d out of %d issue(s)",
+                "Successfully fetched %d unestimated issue(s) out of %d",
                 len(issues),
                 len(normalized_keys),
             )
-            return issues, failed_issues
+            return issues, failed_issues + [{"key": k, "reason": "Already estimated", "details": "Issue already has story points set"} for k in estimated_issues]
 
         except Exception as e:
             logger.error("Error fetching issues by keys: %s", e, exc_info=True)
             return [], []
+
+    def _extract_story_points(self, issue_data: Dict) -> int | None:
+        """
+        Extract story points/estimate from Jira issue data
+        
+        Supports multiple field names:
+        - customfield_10016 (common custom field ID for story points)
+        - story_points (field name)
+        - estimate (field name)
+        
+        Args:
+            issue_data: Raw Jira issue data from API
+            
+        Returns:
+            Story points value if found, None otherwise
+        """
+        if not issue_data or "fields" not in issue_data:
+            return None
+        
+        fields = issue_data.get("fields", {})
+        
+        # Try common field names for story points
+        story_point_field_names = [
+            "customfield_10016",  # Common Jira Cloud custom field
+            "customfield_10004",  # Alternative custom field
+            "story_points",
+            "estimate",
+        ]
+        
+        for field_name in story_point_field_names:
+            if field_name in fields:
+                value = fields.get(field_name)
+                if value is not None:
+                    logger.debug("Found story points in field %s: %s", field_name, value)
+                    return value
+        
+        return None
 
     def _get_single_issue(self, issue_key: str) -> Dict:
         """
@@ -103,7 +162,7 @@ class JiraService:
             issue_key: Jira issue key (e.g., 'DEVOPS-123')
 
         Returns:
-            Dictionary with "success", "issue", "reason", and "status_code" keys
+            Dictionary with "success", "issue", "raw_data", "reason", and "status_code" keys
         """
         try:
             url = f"{self.jira_url}/rest/api/latest/issue/{issue_key}"
@@ -223,25 +282,27 @@ class JiraService:
                     "status_code": 200
                 }
 
+            # Build Jira URL for the issue
+            jira_url = f"{self.jira_url}/browse/{key}"
+
             issue_obj = {
                 "key": key,
                 "title": title,
                 "description": issue_data.get("fields", {}).get("description") or "",
-                "issue_type": issue_data.get("fields", {})
-                    .get("issuetype", {})
-                    .get("name", ""),
+                "jira_url": jira_url,
             }
             
             logger.debug(
-                "Parsed issue: %s - %s (%s)",
+                "Parsed issue: %s - %s (URL: %s)",
                 issue_obj["key"],
                 issue_obj["title"],
-                issue_obj["issue_type"]
+                jira_url
             )
             
             return {
                 "success": True,
-                "issue": issue_obj
+                "issue": issue_obj,
+                "raw_data": issue_data
             }
 
         except requests.exceptions.Timeout as e:

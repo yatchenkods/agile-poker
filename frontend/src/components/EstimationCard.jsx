@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Card, CardContent, Typography, Button, Alert, Divider } from '@mui/material';
+import { Box, Card, CardContent, Typography, Button, Alert, Divider, Link } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { api } from '../services/api';
 
@@ -105,6 +106,21 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     }
   };
 
+  // Build Jira URL if not provided
+  const getJiraUrl = () => {
+    if (issue.jira_url) {
+      return issue.jira_url;
+    }
+    // Try to construct URL from Jira environment variable
+    const jiraUrl = process.env.REACT_APP_JIRA_URL;
+    if (jiraUrl && issue.jira_key) {
+      return `${jiraUrl}/browse/${issue.jira_key}`;
+    }
+    return null;
+  };
+
+  const jiraUrl = getJiraUrl();
+
   if (error && error !== 'Not authenticated') {
     return (
       <Card>
@@ -130,9 +146,35 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between' }}>
           <Box sx={{ flex: 1 }}>
-            <Typography variant="h6" gutterBottom>
-              {issue.jira_key}: {issue.title}
-            </Typography>
+            {/* Clickable issue title with link to Jira */}
+            {jiraUrl ? (
+              <Link
+                href={jiraUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  '&:hover': {
+                    color: 'primary.main',
+                    textDecoration: 'underline',
+                    cursor: 'pointer',
+                  },
+                }}
+              >
+                <Typography variant="h6" component="span" gutterBottom>
+                  {issue.jira_key}: {issue.title}
+                </Typography>
+                <OpenInNewIcon sx={{ fontSize: '1rem', mt: 0.5 }} />
+              </Link>
+            ) : (
+              <Typography variant="h6" gutterBottom>
+                {issue.jira_key}: {issue.title}
+              </Typography>
+            )}
             <Typography variant="body2" color="textSecondary" paragraph>
               {issue.description}
             </Typography>

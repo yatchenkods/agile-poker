@@ -7,18 +7,25 @@ import {
   Typography,
   Chip,
   CircularProgress,
+  IconButton,
+  Tooltip,
+  FormControlLabel,
+  Switch,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import PendingIcon from '@mui/icons-material/Pending';
+import DeleteIcon from '@mui/icons-material/Delete';
 
 import EstimationCard from './EstimationCard';
 import { api } from '../services/api';
 
-function SessionBoard({ session, issues }) {
+function SessionBoard({ session, issues, isCreator = false, onDeleteIssue = null }) {
   const [selectedIssue, setSelectedIssue] = useState(issues[0] || null);
   const [estimates, setEstimates] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
   const [loadingEstimates, setLoadingEstimates] = useState(true);
+  const [hoveredIssueId, setHoveredIssueId] = useState(null);
+  const [showOnlyUnestimated, setShowOnlyUnestimated] = useState(false);
 
   // Fetch current user and all estimates
   useEffect(() => {
@@ -55,6 +62,15 @@ function SessionBoard({ session, issues }) {
     }
   }, [session.id]);
 
+  // Update selected issue when issues change
+  useEffect(() => {
+    if (issues.length > 0 && (!selectedIssue || !issues.find(i => i.id === selectedIssue.id))) {
+      setSelectedIssue(issues[0]);
+    } else if (issues.length === 0) {
+      setSelectedIssue(null);
+    }
+  }, [issues]);
+
   const handleEstimateSubmitted = (issueId, points) => {
     // Update local state with new estimate
     setEstimates((prev) => ({
@@ -87,80 +103,232 @@ function SessionBoard({ session, issues }) {
     );
   }
 
+  // Filter issues based on toggle
+  const filteredIssues = showOnlyUnestimated
+    ? issues.filter((issue) => {
+        const status = getIssueEstimateStatus(issue);
+        return !status.hasUserEstimate;
+      })
+    : issues;
+
+  const unestimatedCount = issues.filter((issue) => {
+    const status = getIssueEstimateStatus(issue);
+    return !status.hasUserEstimate;
+  }).length;
+
+  // Header height for offset calculation
+  const headerHeight = '56px'; // h6 variant height with padding
+
   return (
-    <Grid container spacing={2}>
+    <Grid container spacing={2} sx={{ height: 'auto', minHeight: 'calc(100vh - 300px)' }}>
       {/* Issues List - Left Side */}
-      <Grid item xs={12} md={4}>
-        <Typography variant="h6" gutterBottom>
-          📋 Issues ({issues.length})
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, maxHeight: '75vh', overflowY: 'auto' }}>
-          {issues.map((issue) => {
-            const status = getIssueEstimateStatus(issue);
-
-            return (
-              <Card
-                key={issue.id}
-                onClick={() => setSelectedIssue(issue)}
-                sx={{
-                  cursor: 'pointer',
-                  backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : 'inherit',
-                  '&:hover': { boxShadow: 2 },
-                  transition: 'all 0.2s',
-                  border: status.isFinal ? '2px solid #4caf50' : 'none',
-                }}
-              >
-                <CardContent sx={{ py: 1, '&:last-child': { pb: 1 } }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="body2" noWrap sx={{ fontWeight: 'bold' }}>
-                        {issue.jira_key}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary" noWrap>
-                        {issue.title}
-                      </Typography>
-                    </Box>
-
-                    {/* Estimate Badge */}
-                    <Box sx={{ display: 'flex', gap: 0.5, flexDirection: 'column', alignItems: 'flex-end', minWidth: 'fit-content' }}>
-                      {status.isFinal ? (
-                        <Chip
-                          label={`${status.finalPoints}`}
-                          size="small"
-                          color="success"
-                          variant="filled"
-                          icon={<CheckCircleIcon />}
-                          sx={{ fontWeight: 'bold' }}
-                        />
-                      ) : status.hasUserEstimate ? (
-                        <Chip
-                          label={`${status.userEstimate}`}
-                          size="small"
-                          color="primary"
-                          variant="outlined"
-                          icon={<PendingIcon />}
-                        />
-                      ) : (
-                        <Chip label="—" size="small" variant="outlined" />
-                      )}
-
-                      {/* Show total estimates count */}
-                      {status.totalEstimates > 0 && (
-                        <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.65rem' }}>
-                          {status.totalEstimates} vote{status.totalEstimates !== 1 ? 's' : ''}
-                        </Typography>
-                      )}
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            );
-          })}
+      <Grid 
+        item 
+        xs={12} 
+        md={4} 
+        sx={{ 
+          display: 'flex', 
+          flexDirection: 'column',
+          minHeight: 0
+        }}
+      >
+        {/* Sticky Header with Filter Toggle */}
+        <Box
+          sx={{
+            position: 'sticky',
+            top: 0,
+            backgroundColor: 'white',
+            zIndex: 10,
+            pb: 1,
+            mb: 0.5,
+            borderBottom: '2px solid #e0e0e0',
+          }}
+        >
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="h6" sx={{ mb: 0 }}>
+              📋 Issues ({filteredIssues.length})
+            </Typography>
+            {unestimatedCount > 0 && (
+              <Chip 
+                label={`${unestimatedCount} left`} 
+                size="small" 
+                color="warning" 
+                variant="outlined"
+              />
+            )}
+          </Box>
+          
+          {/* Filter Toggle */}
+          <FormControlLabel
+            control={
+              <Switch
+                size="small"
+                checked={showOnlyUnestimated}
+                onChange={(e) => setShowOnlyUnestimated(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+                Only unestimated
+              </Typography>
+            }
+            sx={{ m: 0 }}
+          />
         </Box>
+        
+        {filteredIssues.length === 0 ? (
+          <Box sx={{ p: 2, bgcolor: '#f5f5f5', borderRadius: 1, textAlign: 'center' }}>
+            {showOnlyUnestimated ? (
+              <>
+                <Typography color="success.main" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  ✅ All estimated!
+                </Typography>
+                <Typography variant="caption" color="textSecondary">
+                  You've estimated all issues in this session.
+                </Typography>
+              </>
+            ) : (
+              <>
+                <Typography color="textSecondary">No issues in this session yet.</Typography>
+                <Typography variant="caption" color="textSecondary">Click "Add Issues" to import tasks.</Typography>
+              </>
+            )}
+          </Box>
+        ) : (
+          /* Scrollable Issues Container */
+          <Box
+            sx={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              overflowX: 'hidden',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 1,
+              pr: '8px',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                backgroundColor: '#f1f1f1',
+                borderRadius: '4px',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                backgroundColor: '#bdbdbd',
+                borderRadius: '4px',
+                transition: 'background-color 0.2s',
+                '&:hover': {
+                  backgroundColor: '#9e9e9e',
+                },
+              },
+            }}
+          >
+            {filteredIssues.map((issue) => {
+              const status = getIssueEstimateStatus(issue);
+              const isHovered = hoveredIssueId === issue.id;
+
+              return (
+                <Card
+                  key={issue.id}
+                  onClick={() => setSelectedIssue(issue)}
+                  onMouseEnter={() => setHoveredIssueId(issue.id)}
+                  onMouseLeave={() => setHoveredIssueId(null)}
+                  sx={{
+                    cursor: 'pointer',
+                    backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : 'inherit',
+                    '&:hover': { 
+                      boxShadow: 2,
+                      backgroundColor: selectedIssue?.id === issue.id ? '#e3f2fd' : '#fafafa',
+                    },
+                    transition: 'all 0.2s',
+                    border: status.isFinal ? '2px solid #4caf50' : '1px solid #e0e0e0',
+                    flexShrink: 0,
+                  }}
+                >
+                  <CardContent sx={{ py: 1.5, px: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 1 }}>
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography variant="body2" noWrap sx={{ fontWeight: 'bold' }}>
+                          {issue.jira_key}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary" noWrap sx={{ display: 'block' }}>
+                          {issue.title}
+                        </Typography>
+                      </Box>
+
+                      {/* Estimate Badge and Delete Button */}
+                      <Box sx={{ display: 'flex', gap: 0.5, flexDirection: 'column', alignItems: 'flex-end', minWidth: 'fit-content' }}>
+                        {isCreator && isHovered && (
+                          <Tooltip title="Remove issue">
+                            <IconButton
+                              size="small"
+                              color="error"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (onDeleteIssue) {
+                                  onDeleteIssue(issue.id);
+                                }
+                              }}
+                              sx={{ p: 0.5 }}
+                            >
+                              <DeleteIcon fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+                        )}
+
+                        {status.isFinal ? (
+                          <Chip
+                            label={`${status.finalPoints}`}
+                            size="small"
+                            color="success"
+                            variant="filled"
+                            icon={<CheckCircleIcon />}
+                            sx={{ fontWeight: 'bold' }}
+                          />
+                        ) : status.hasUserEstimate ? (
+                          <Chip
+                            label={`${status.userEstimate}`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            icon={<PendingIcon />}
+                          />
+                        ) : (
+                          <Chip label="—" size="small" variant="outlined" />
+                        )}
+
+                        {/* Show total estimates count */}
+                        {status.totalEstimates > 0 && (
+                          <Typography variant="caption" color="textSecondary" sx={{ fontSize: '0.65rem' }}>
+                            {status.totalEstimates} vote{status.totalEstimates !== 1 ? 's' : ''}
+                          </Typography>
+                        )}
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </Box>
+        )}
       </Grid>
 
-      {/* Estimation Area - Right Side */}
-      <Grid item xs={12} md={8}>
+      {/* Estimation Area - Right Side (Fixed, doesn't scroll) */}
+      <Grid 
+        item 
+        xs={12} 
+        md={8}
+        sx={{
+          display: 'flex',
+          flexDirection: 'column',
+          minHeight: 0,
+          position: 'sticky',
+          top: headerHeight, // Offset by header height so it doesn't overlap
+          height: 'fit-content',
+          alignSelf: 'flex-start',
+        }}
+      >
         {selectedIssue ? (
           <EstimationCard
             issue={selectedIssue}

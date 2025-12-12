@@ -17,17 +17,20 @@ import {
   FormControlLabel,
   Checkbox,
   Divider,
+  Tooltip,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import GetAppIcon from '@mui/icons-material/GetApp';
 import HelpIcon from '@mui/icons-material/Help';
 import ErrorIcon from '@mui/icons-material/Error';
+import SecurityIcon from '@mui/icons-material/Security';
 import { api } from '../services/api';
 
 function Home() {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
@@ -45,8 +48,18 @@ function Home() {
   const [failedIssues, setFailedIssues] = useState([]);
 
   useEffect(() => {
+    getCurrentUser();
     loadSessions();
   }, []);
+
+  const getCurrentUser = async () => {
+    try {
+      const res = await api.get('/auth/me');
+      setCurrentUser(res.data);
+    } catch (err) {
+      console.error('Failed to fetch current user:', err);
+    }
+  };
 
   const loadSessions = async () => {
     try {
@@ -204,6 +217,8 @@ function Home() {
     return <Typography>Loading sessions...</Typography>;
   }
 
+  const isAdmin = currentUser?.is_admin || currentUser?.role === 'admin';
+
   return (
     <Box>
       <Box
@@ -215,9 +230,22 @@ function Home() {
         }}
       >
         <Typography variant="h4">🎲 Planning Poker Sessions</Typography>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
-          New Session
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {isAdmin && (
+            <Tooltip title="Go to admin panel">
+              <Button
+                variant="outlined"
+                startIcon={<SecurityIcon />}
+                onClick={() => navigate('/admin')}
+              >
+                Admin Panel
+              </Button>
+            </Tooltip>
+          )}
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleDialogOpen}>
+            New Session
+          </Button>
+        </Box>
       </Box>
 
       <Grid container spacing={2}>

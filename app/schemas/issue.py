@@ -23,6 +23,7 @@ class IssueResponse(BaseModel):
     jira_key: str
     title: str
     description: Optional[str]
+    jira_url: Optional[str]  # URL to Jira issue for linking
     story_points: Optional[int]
     story_points_before: Optional[int]
     is_estimated: bool
