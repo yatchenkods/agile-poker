@@ -109,6 +109,13 @@ async def delete_session(
     
     Only the session creator can delete the session.
     Deletes all issues, estimates, participants, and estimators associated with the session.
+    
+    Deletion order:
+    1. Clear estimators relationship
+    2. Clear participants relationship
+    3. Delete all estimates (foreign key references to issues)
+    4. Delete all issues (cascade delete from session)
+    5. Delete the session itself
     """
     session = session_service.get_session(db, session_id)
     if not session:
@@ -121,34 +128,66 @@ async def delete_session(
         )
     
     try:
-        logger.info(f"Deleting session {session_id}")
+        logger.info(f"Starting deletion of session {session_id}")
         
-        # Remove all estimators from the session
+        # Step 1: Remove all estimators from the session
         # This clears the session_estimators association table
+        estimators_count = len(session.estimators)
         session.estimators.clear()
-        logger.debug(f"Cleared estimators for session {session_id}")
+        logger.debug(f"Cleared {estimators_count} estimator(s) for session {session_id}")
         
-        # Remove all participants from the session
+        # Step 2: Remove all participants from the session
         # This clears the session_users association table
+        participants_count = len(session.participants)
         session.participants.clear()
-        logger.debug(f"Cleared participants for session {session_id}")
+        logger.debug(f"Cleared {participants_count} participant(s) for session {session_id}")
         
-        # Flush changes to ensure relationships are cleared before deleting the session
+        # Step 3: Flush changes to relationships
         db.flush()
+        logger.debug("Flushed relationship changes")
         
-        # Delete all issues associated with the session
-        # This is handled by cascade delete in the model, but we can explicitly do it too
+        # Step 4: Delete all estimates associated with issues in this session
+        # This must be done BEFORE deleting issues to avoid foreign key violations
+        from app.models.estimate import Estimate
         from app.models.issue import Issue
-        issues_deleted = db.query(Issue).filter(Issue.session_id == session_id).delete()
+        
+        # Get all issues in this session
+        issues = db.query(Issue).filter(Issue.session_id == session_id).all()
+        logger.debug(f"Found {len(issues)} issue(s) in session {session_id}")
+        
+        # Delete all estimates for these issues
+        estimate_count = 0
+        for issue in issues:
+            # Delete estimates through ORM to trigger cascade
+            for estimate in issue.estimates:
+                db.delete(estimate)
+                estimate_count += 1
+        
+        db.flush()
+        logger.info(f"Deleted {estimate_count} estimate(s) from {len(issues)} issue(s)")
+        
+        # Step 5: Delete all issues through ORM (cascade delete)
+        # Using ORM ensures cascade relationships are respected
+        issues_deleted = 0
+        for issue in issues:
+            db.delete(issue)
+            issues_deleted += 1
+        
+        db.flush()
         logger.info(f"Deleted {issues_deleted} issue(s) from session {session_id}")
         
-        # Delete the session itself
+        # Step 6: Delete the session itself
         db.delete(session)
         db.flush()
         db.commit()
         
-        logger.info(f"Session {session_id} deleted successfully")
+        logger.info(
+            f"Session {session_id} deleted successfully. "
+            f"Removed: {estimators_count} estimators, {participants_count} participants, "
+            f"{estimate_count} estimates, {issues_deleted} issues"
+        )
         return {"message": "Session deleted successfully"}
+        
     except Exception as e:
         logger.error(f"Error deleting session {session_id}: {e}", exc_info=True)
         db.rollback()
