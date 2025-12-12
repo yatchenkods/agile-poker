@@ -90,6 +90,50 @@ async def update_session(
     return updated_session
 
 
+@router.delete("/{session_id}")
+async def delete_session(
+    session_id: int,
+    current_user = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete a session and all its associated data
+    
+    Only the session creator can delete the session.
+    Deletes all issues, estimates, and participants associated with the session.
+    """
+    session = session_service.get_session(db, session_id)
+    if not session:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
+    
+    if session.created_by_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only session creator can delete",
+        )
+    
+    try:
+        logger.info(f"Deleting session {session_id}")
+        
+        # Delete all issues associated with the session
+        from app.models.issue import Issue
+        db.query(Issue).filter(Issue.session_id == session_id).delete()
+        
+        # Delete the session itself
+        db.delete(session)
+        db.commit()
+        
+        logger.info(f"Session {session_id} deleted successfully")
+        return {"message": "Session deleted successfully"}
+    except Exception as e:
+        logger.error(f"Error deleting session {session_id}: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting session",
+        )
+
+
 @router.post("/{session_id}/import-issues", response_model=ImportIssuesResponse)
 async def import_issues_to_session(
     session_id: int,
