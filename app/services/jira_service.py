@@ -12,7 +12,7 @@ class JiraService:
     """Service for Jira integration"""
 
     def __init__(self):
-        self.jira_url = settings.jira_base_url
+        self.jira_url = settings.jira_url
         self.jira_username = settings.jira_username
         self.jira_api_token = settings.jira_api_token
         self.auth = (self.jira_username, self.jira_api_token) if self.jira_username and self.jira_api_token else None
