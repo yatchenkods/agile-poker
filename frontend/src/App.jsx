@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { Container, AppBar, Toolbar, Typography, Button, Box } from '@mui/material';
 import LogoutIcon from '@mui/icons-material/Logout';
 import HomeIcon from '@mui/icons-material/Home';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
 
 import Login from './pages/Login';
 import Home from './pages/Home';
@@ -14,16 +15,24 @@ function App() {
   const navigate = useNavigate();
   const [isLoggedIn, setIsLoggedIn] = useState(isAuthenticated());
   const [currentUser, setCurrentUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (isLoggedIn) {
       // Fetch current user
       api.get('/auth/me')
-        .then(res => setCurrentUser(res.data))
-        .catch(() => {
+        .then(res => {
+          console.log('User loaded:', res.data);
+          setCurrentUser(res.data);
+        })
+        .catch(err => {
+          console.error('Failed to load user:', err);
           setIsLoggedIn(false);
           logout();
-        });
+        })
+        .finally(() => setLoading(false));
+    } else {
+      setLoading(false);
     }
   }, [isLoggedIn]);
 
@@ -35,6 +44,11 @@ function App() {
 
   const handleLogoClick = () => {
     navigate('/');
+  };
+
+  const handleAdminClick = () => {
+    console.log('Admin button clicked, is_admin:', currentUser?.is_admin);
+    navigate('/admin');
   };
 
   return (
@@ -82,8 +96,13 @@ function App() {
             </Button>
 
             {/* Admin Button */}
-            {currentUser?.is_admin && (
-              <Button color="inherit" href="/admin" sx={{ mr: 1 }}>
+            {currentUser && currentUser.is_admin && (
+              <Button
+                color="inherit"
+                onClick={handleAdminClick}
+                startIcon={<AdminPanelSettingsIcon />}
+                sx={{ mr: 1 }}
+              >
                 Admin
               </Button>
             )}
@@ -101,7 +120,8 @@ function App() {
           <Route path="/login" element={<Login onLogin={() => setIsLoggedIn(true)} />} />
           <Route path="/" element={isLoggedIn ? <Home /> : <Navigate to="/login" />} />
           <Route path="/session/:sessionId" element={isLoggedIn ? <SessionDetail /> : <Navigate to="/login" />} />
-          <Route path="/admin" element={isLoggedIn && currentUser?.is_admin ? <Admin /> : <Navigate to="/" />} />
+          {/* Admin route - Admin component handles access check */}
+          <Route path="/admin" element={isLoggedIn ? <Admin /> : <Navigate to="/login" />} />
         </Routes>
       </Container>
     </>
