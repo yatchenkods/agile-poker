@@ -108,7 +108,7 @@ async def delete_session(
     Delete a session and all its associated data
     
     Only the session creator can delete the session.
-    Deletes all issues, estimates, and participants associated with the session.
+    Deletes all issues, estimates, participants, and estimators associated with the session.
     """
     session = session_service.get_session(db, session_id)
     if not session:
@@ -123,22 +123,38 @@ async def delete_session(
     try:
         logger.info(f"Deleting session {session_id}")
         
+        # Remove all estimators from the session
+        # This clears the session_estimators association table
+        session.estimators.clear()
+        logger.debug(f"Cleared estimators for session {session_id}")
+        
+        # Remove all participants from the session
+        # This clears the session_users association table
+        session.participants.clear()
+        logger.debug(f"Cleared participants for session {session_id}")
+        
+        # Flush changes to ensure relationships are cleared before deleting the session
+        db.flush()
+        
         # Delete all issues associated with the session
+        # This is handled by cascade delete in the model, but we can explicitly do it too
         from app.models.issue import Issue
-        db.query(Issue).filter(Issue.session_id == session_id).delete()
+        issues_deleted = db.query(Issue).filter(Issue.session_id == session_id).delete()
+        logger.info(f"Deleted {issues_deleted} issue(s) from session {session_id}")
         
         # Delete the session itself
         db.delete(session)
+        db.flush()
         db.commit()
         
         logger.info(f"Session {session_id} deleted successfully")
         return {"message": "Session deleted successfully"}
     except Exception as e:
-        logger.error(f"Error deleting session {session_id}: {e}")
+        logger.error(f"Error deleting session {session_id}: {e}", exc_info=True)
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error deleting session",
+            detail=f"Error deleting session: {str(e)}",
         )
 
 
