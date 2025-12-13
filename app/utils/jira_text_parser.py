@@ -13,7 +13,10 @@ _list_type_stack = []  # Track ordered vs unordered lists
 _in_code_block = False  # Track if we're inside a code block
 
 # Pattern for old Jira code format: {code:language}...{code}
-OLD_JIRA_CODE_PATTERN = re.compile(r'\{code(?::([^}]*))?\}(.*?)\{code\}', re.DOTALL)
+OLD_JIRA_CODE_PATTERN = re.compile(r'\{code(?::([^}]*))? \}(.*?)\{code\}', re.DOTALL)
+
+# Pattern for Jira-style lists: * for level 1, ** for level 2, *** for level 3, etc.
+JIRA_LIST_PATTERN = re.compile(r'^(\*+)\s+(.*)$')
 
 
 def parse_jira_rich_text(text: Union[str, dict]) -> str:
@@ -21,6 +24,7 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
     Parse Jira Document Format (Rich Text) to plain text.
     Handles both JSON strings and dict objects.
     Also handles old Jira macro format: {code:language}...{code}
+    Also handles Jira-style lists: * item, ** sub-item, etc.
     
     Jira Document Format example:
     {
@@ -43,6 +47,12 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
 System.out.println("Hello");
     {code}
     
+    Jira-style lists:
+    * Top level item
+    ** Second level item
+    ** Another second level
+    * Back to top level
+    
     Args:
         text: Jira rich text as JSON string or dict
         
@@ -61,6 +71,8 @@ System.out.println("Hello");
                 # Not JSON, might be old Jira format or plain text
                 # Convert old Jira code format to markdown
                 text = _convert_old_jira_code_blocks(text)
+                # Convert Jira-style lists to markdown
+                text = _convert_jira_style_lists(text)
                 return _format_plain_text_with_urls(text)
             
             try:
@@ -69,6 +81,7 @@ System.out.println("Hello");
                 logger.debug("Failed to parse text as JSON, might be old format: %s", text[:50])
                 # Try old Jira format
                 text = _convert_old_jira_code_blocks(text)
+                text = _convert_jira_style_lists(text)
                 return _format_plain_text_with_urls(text)
         else:
             data = text
@@ -84,6 +97,52 @@ System.out.println("Hello");
         logger.warning("Error parsing Jira rich text: %s", e)
         # Fallback: return original text
         return str(text) if isinstance(text, dict) else text
+
+
+def _convert_jira_style_lists(text: str) -> str:
+    """
+    Convert Jira-style lists (* for level 1, ** for level 2, etc.)
+    to markdown lists with proper indentation.
+    
+    Input:
+    * Item 1
+    ** Sub-item 1.1
+    ** Sub-item 1.2
+    * Item 2
+    
+    Output:
+    * Item 1
+      * Sub-item 1.1
+      * Sub-item 1.2
+    * Item 2
+    
+    Args:
+        text: Text potentially containing Jira-style lists
+        
+    Returns:
+        Text with converted lists
+    """
+    if not text or '*' not in text:
+        return text
+    
+    lines = text.split('\n')
+    converted_lines = []
+    
+    for line in lines:
+        match = JIRA_LIST_PATTERN.match(line)
+        if match:
+            asterisks = match.group(1)
+            content = match.group(2)
+            # Level is number of asterisks
+            level = len(asterisks)
+            # Convert to markdown: indent by (level-1)*2 spaces
+            indent = '  ' * (level - 1)
+            # Use * for all levels (markdown)
+            converted_lines.append(f'{indent}* {content}')
+        else:
+            converted_lines.append(line)
+    
+    return '\n'.join(converted_lines)
 
 
 def _convert_old_jira_code_blocks(text: str) -> str:
@@ -492,6 +551,7 @@ def parse_jira_description(description: Optional[str]) -> str:
     """
     Parse Jira description field (handles both rich text and plain text).
     Also handles old Jira macro format {code:language}...{code}
+    Also handles Jira-style lists (* item, ** sub-item, etc.)
     
     Args:
         description: Description from Jira API
@@ -502,7 +562,7 @@ def parse_jira_description(description: Optional[str]) -> str:
     if not description:
         return ""
     
-    # Try to parse as Jira rich text (also handles old format)
+    # Try to parse as Jira rich text (also handles old format and lists)
     result = parse_jira_rich_text(description)
     
     # Fallback: if parsing returned empty or looks wrong, return original
