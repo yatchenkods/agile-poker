@@ -4,6 +4,7 @@ import requests
 import logging
 from typing import List, Dict, Tuple
 from app.config import settings
+from app.utils.jira_text_converter import convert_jira_text
 
 logger = logging.getLogger(__name__)
 
@@ -282,13 +283,23 @@ class JiraService:
                     "status_code": 200
                 }
 
+            # Extract and convert description
+            raw_description = issue_data.get("fields", {}).get("description") or ""
+            description = convert_jira_text(raw_description)
+            
+            logger.debug(
+                "Converted Jira description (original length: %d, converted length: %d)",
+                len(raw_description),
+                len(description)
+            )
+
             # Build Jira URL for the issue
             jira_url = f"{self.jira_url}/browse/{key}"
 
             issue_obj = {
                 "key": key,
                 "title": title,
-                "description": issue_data.get("fields", {}).get("description") or "",
+                "description": description,
                 "jira_url": jira_url,
             }
             
