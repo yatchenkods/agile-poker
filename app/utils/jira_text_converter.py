@@ -8,6 +8,7 @@ import json
 import logging
 import html
 from typing import Any, Dict, List, Optional
+from urllib.parse import quote, unquote
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +162,10 @@ class JiraTextConverter:
             if not isinstance(item, dict):
                 continue
             
-            if item.get('type') == 'text':
+            item_type = item.get('type', '')
+            
+            # Handle text with marks
+            if item_type == 'text':
                 text = html.escape(item.get('text', ''))
                 marks = item.get('marks', [])
                 
@@ -181,30 +185,81 @@ class JiraTextConverter:
                         text = f"<u>{text}</u>"
                     elif mark_type == 'link':
                         href = mark.get('attrs', {}).get('href', '#')
-                        href = html.escape(href)
+                        href = JiraTextConverter._sanitize_url(href)
                         text = f"<a href='{href}' target='_blank' rel='noopener noreferrer'>{text}</a>"
                 
                 result.append(text)
             
-            elif item.get('type') == 'mention':
-                # Replace mentions with @username format
+            # Handle link blocks (not just marks)
+            elif item_type == 'link':
+                attrs = item.get('attrs', {})
+                href = attrs.get('href', '#')
+                href = JiraTextConverter._sanitize_url(href)
+                
+                # Get link text from content
+                link_text = ""
+                if 'content' in item:
+                    link_text = JiraTextConverter._convert_adf_inline(item.get('content', []))
+                else:
+                    link_text = attrs.get('text', href)
+                
+                if link_text:
+                    result.append(f"<a href='{href}' target='_blank' rel='noopener noreferrer'>{link_text}</a>")
+            
+            # Handle mentions
+            elif item_type == 'mention':
                 attrs = item.get('attrs', {})
                 name = attrs.get('text', '@unknown')
-                result.append(f"<span class='jira-mention'>@{name}</span>")
+                user_id = attrs.get('id', '')
+                result.append(f"<span class='jira-mention' title='User ID: {user_id}'>@{html.escape(name)}</span>")
             
-            elif item.get('type') == 'emoji':
-                # Include emoji or fallback to text representation
+            # Handle emojis
+            elif item_type == 'emoji':
                 attrs = item.get('attrs', {})
-                text = attrs.get('text', '')
-                result.append(html.escape(text))
+                emoji_text = attrs.get('text', '')
+                short_name = attrs.get('shortName', '')
+                result.append(html.escape(emoji_text))
             
-            elif item.get('type') == 'hardBreak':
+            # Handle hard and soft breaks
+            elif item_type == 'hardBreak':
                 result.append('<br/>')
-            
-            elif item.get('type') == 'softBreak':
+            elif item_type == 'softBreak':
                 result.append(' ')
         
         return ''.join(result).strip()
+
+    @staticmethod
+    def _sanitize_url(url: str) -> str:
+        """
+        Sanitize and validate URLs for security.
+        
+        Args:
+            url: Original URL
+            
+        Returns:
+            Sanitized URL safe for href attribute
+        """
+        if not url:
+            return '#'
+        
+        url = url.strip()
+        
+        # Block dangerous protocols
+        dangerous_protocols = ['javascript:', 'data:', 'vbscript:', 'file:']
+        lower_url = url.lower()
+        
+        for protocol in dangerous_protocols:
+            if lower_url.startswith(protocol):
+                logger.warning(f"Blocked dangerous URL protocol: {protocol}")
+                return '#'
+        
+        # Ensure absolute URLs have protocol
+        if not url.startswith(('http://', 'https://', 'ftp://', 'ftps://', '#', 'mailto:')):
+            # Relative URL - keep as is
+            pass
+        
+        # HTML escape the URL for safety in attributes
+        return html.escape(url, quote=True)
 
     @staticmethod
     def _convert_adf_list(content: List[Dict], ordered: bool = False) -> str:
@@ -431,11 +486,11 @@ class JiraTextConverter:
         """
         Apply inline formatting to wiki markup text.
         
-        Converts: *bold*, _italic_, -strikethrough-, {{code}}
+        Converts: *bold*, _italic_, -strikethrough-, {{code}}, [Link|URL]
+        
+        Note: text should already be HTML escaped before calling this
         """
         import re
-        
-        # Note: text should already be HTML escaped before calling this
         
         # *text* -> <strong>text</strong>
         text = re.sub(r'\*([^*]+)\*', r'<strong>\1</strong>', text)
@@ -449,8 +504,15 @@ class JiraTextConverter:
         # {{text}} -> <code>text</code>
         text = re.sub(r'{{([^}]+)}}', r'<code>\1</code>', text)
         
-        # [Link|URL] -> <a href="URL">Link</a>
-        text = re.sub(r'\[([^|\]]+)\|([^\]]+)\]', r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>', text)
+        # [Link Text|URL] -> <a href="URL" target="_blank" rel="noopener noreferrer">Link Text</a>
+        def replace_link(match):
+            link_text = match.group(1).strip()
+            url = match.group(2).strip()
+            # Sanitize URL
+            url = JiraTextConverter._sanitize_url(url)
+            return f'<a href="{url}" target="_blank" rel="noopener noreferrer">{link_text}</a>'
+        
+        text = re.sub(r'\[([^|\]]+)\|([^\]]+)\]', replace_link, text)
         
         return text
 
