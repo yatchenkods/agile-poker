@@ -101,11 +101,21 @@ const htmlContentStyles = {
     textDecoration: 'line-through',
     color: '#999',
   },
+  // Links styling - IMPORTANT: make them clickable
   '& a': {
     color: '#1976d2',
     textDecoration: 'none',
+    cursor: 'pointer',
+    pointerEvents: 'auto',  // Enable click events
     '&:hover': {
       textDecoration: 'underline',
+      color: '#1565c0',
+    },
+    '&:active': {
+      color: '#0d47a1',
+    },
+    '&:visited': {
+      color: '#7b1fa2',
     },
   },
   '& table': {
@@ -326,6 +336,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                   color: 'textSecondary',
                   fontSize: '0.95rem',
                   lineHeight: 1.6,
+                  pointerEvents: 'auto',  // Enable pointer events for links
                   ...htmlContentStyles,
                 }}
                 dangerouslySetInnerHTML={{ __html: issue.description }}
