@@ -13,7 +13,8 @@ _list_type_stack = []  # Track ordered vs unordered lists
 _in_code_block = False  # Track if we're inside a code block
 
 # Pattern for old Jira code format: {code:language}...{code}
-OLD_JIRA_CODE_PATTERN = re.compile(r'\{code(?::([^}]*))? \}(.*?)\{code\}', re.DOTALL)
+# Handles: {code}, {code:java}, {code:python}, etc.
+OLD_JIRA_CODE_PATTERN = re.compile(r'\{code(?::([^}]*))?\}(.*?)\{code\}', re.DOTALL)
 
 # Pattern for Jira-style lists: * for level 1, ** for level 2, *** for level 3, etc.
 JIRA_LIST_PATTERN = re.compile(r'^(\*+)\s+(.*)$')
@@ -149,6 +150,11 @@ def _convert_old_jira_code_blocks(text: str) -> str:
     """
     Convert old Jira macro format {code:language}...{code} to markdown ```language...```
     
+    Supports:
+    - {code}...{code} - code without language
+    - {code:java}...{code} - code with language
+    - {code:python}...{code} - any language identifier
+    
     Args:
         text: Text potentially containing old Jira code blocks
         
@@ -161,11 +167,20 @@ def _convert_old_jira_code_blocks(text: str) -> str:
     def replace_code_block(match):
         language = match.group(1) or ''
         code_content = match.group(2)
-        # Trim code content
-        code_content = code_content.strip()
-        return f'```{language}\n{code_content}\n```'
+        # Preserve code content exactly (only trim leading/trailing newlines)
+        code_content = code_content.strip('\n')
+        if language:
+            return f'```{language}\n{code_content}\n```'
+        else:
+            return f'```\n{code_content}\n```'
     
     # Replace all {code:language}...{code} patterns
+    # Pattern explanation:
+    # \{code - literal "{code"
+    # (?::([^}]*))? - optional ":language" part (captures language)
+    # \} - literal "}"
+    # (.*?) - code content (non-greedy)
+    # \{code\} - literal "{code}"
     result = OLD_JIRA_CODE_PATTERN.sub(replace_code_block, text)
     return result
 
