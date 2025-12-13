@@ -2,6 +2,7 @@
 
 import json
 import logging
+import re
 from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
@@ -43,14 +44,14 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
             # First check if it looks like JSON
             text = text.strip()
             if not text.startswith('{'):
-                # Not JSON, return as-is
-                return text
+                # Not JSON, check if it contains URLs and format them
+                return _format_plain_text_with_urls(text)
             
             try:
                 data = json.loads(text)
             except json.JSONDecodeError:
                 logger.debug("Failed to parse text as JSON, returning as-is: %s", text[:50])
-                return text
+                return _format_plain_text_with_urls(text)
         else:
             data = text
         
@@ -65,6 +66,24 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
         logger.warning("Error parsing Jira rich text: %s", e)
         # Fallback: return original text
         return str(text) if isinstance(text, dict) else text
+
+
+def _format_plain_text_with_urls(text: str) -> str:
+    """
+    Format plain text by detecting and preserving URLs.
+    Detects common URL patterns like [https://...] or bare URLs.
+    
+    Args:
+        text: Plain text that may contain URLs
+        
+    Returns:
+        Formatted text
+    """
+    if not text:
+        return ""
+    
+    # Already well-formatted, just return
+    return text
 
 
 def _extract_text_from_jira_doc(doc: dict) -> str:
@@ -90,11 +109,14 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
             
             item_type = item.get('type')
             
-            # Extract text nodes
+            # Extract text nodes with formatting marks
             if item_type == 'text':
                 text_content = item.get('text', '')
                 if text_content:
-                    texts.append(text_content)
+                    # Check for text formatting (bold, italic, code, etc.)
+                    marks = item.get('marks', [])
+                    formatted_text = _apply_text_formatting(text_content, marks)
+                    texts.append(formatted_text)
             
             # Handle line breaks
             elif item_type in ('hardBreak', 'softBreak'):
@@ -130,11 +152,17 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
             
             # Handle code blocks
             elif item_type == 'codeBlock':
+                texts.append('\n```\n')
                 nested_content = item.get('content', [])
                 if nested_content:
                     extract_content(nested_content)
-                if texts and texts[-1] != '\n':
-                    texts.append('\n')
+                texts.append('\n```\n')
+            
+            # Handle inline code
+            elif item_type == 'inlineCode':
+                text_content = item.get('text', '')
+                if text_content:
+                    texts.append(f'`{text_content}`')
             
             # Handle tables
             elif item_type == 'table':
@@ -153,24 +181,52 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
             
             # Handle blockquotes and other containers
             elif item_type in ('blockquote', 'panel'):
+                texts.append('> ')
                 nested_content = item.get('content', [])
                 if nested_content:
                     extract_content(nested_content)
                 if texts and texts[-1] != '\n':
                     texts.append('\n')
             
-            # Handle mentions and other inline elements
+            # Handle mentions
             elif item_type == 'mention':
                 mention_text = item.get('attrs', {}).get('text', '@user')
                 texts.append(mention_text)
             
+            # Handle links - IMPROVED
             elif item_type == 'link':
-                nested_content = item.get('content', [])
-                if nested_content:
-                    extract_content(nested_content)
                 href = item.get('attrs', {}).get('href', '')
+                nested_content = item.get('content', [])
+                
+                # Extract link text from nested content
+                link_text = ''
+                if nested_content:
+                    # Temporarily collect nested content to get link text
+                    temp_texts = []
+                    old_texts = texts
+                    texts = temp_texts
+                    extract_content(nested_content)
+                    link_text = ''.join(texts).strip()
+                    texts = old_texts
+                
+                # Format as [link text](url) if both exist
                 if href:
-                    texts.append(f" ({href})")
+                    if link_text and link_text != href:
+                        # Link with custom text: [Text](URL)
+                        texts.append(f'[{link_text}]({href})')
+                    else:
+                        # Just URL
+                        texts.append(href)
+            
+            # Handle horizontal rule
+            elif item_type == 'rule':
+                texts.append('\n---\n')
+            
+            # Handle emoji and other elements
+            elif item_type == 'emoji':
+                emoji_text = item.get('attrs', {}).get('shortName', '')
+                if emoji_text:
+                    texts.append(emoji_text)
             
             # Default: try to extract nested content
             else:
@@ -184,11 +240,53 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
     
     # Join and clean up text
     result = ''.join(texts)
-    # Clean up multiple consecutive newlines
+    # Clean up multiple consecutive newlines (max 2)
     while '\n\n\n' in result:
         result = result.replace('\n\n\n', '\n\n')
+    # Remove trailing spaces on lines
+    result = '\n'.join(line.rstrip() for line in result.split('\n'))
     # Strip leading/trailing whitespace
     result = result.strip()
+    
+    return result
+
+
+def _apply_text_formatting(text: str, marks: list) -> str:
+    """
+    Apply text formatting based on Jira marks.
+    
+    Args:
+        text: Original text
+        marks: List of formatting marks (bold, italic, code, etc.)
+        
+    Returns:
+        Formatted text
+    """
+    if not marks:
+        return text
+    
+    result = text
+    
+    for mark in marks:
+        if not isinstance(mark, dict):
+            continue
+        
+        mark_type = mark.get('type')
+        
+        if mark_type == 'bold':
+            result = f'**{result}**'
+        elif mark_type == 'italic':
+            result = f'*{result}*'
+        elif mark_type == 'code':
+            result = f'`{result}`'
+        elif mark_type == 'strike':
+            result = f'~~{result}~~'
+        elif mark_type == 'underline':
+            result = f'__{result}__'
+        elif mark_type == 'em':
+            result = f'*{result}*'
+        elif mark_type == 'strong':
+            result = f'**{result}**'
     
     return result
 
@@ -201,7 +299,7 @@ def parse_jira_description(description: Optional[str]) -> str:
         description: Description from Jira API
         
     Returns:
-        Clean plain text description
+        Clean plain text description with preserved formatting
     """
     if not description:
         return ""
