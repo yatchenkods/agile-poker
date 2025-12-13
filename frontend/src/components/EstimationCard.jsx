@@ -130,7 +130,7 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     return null;
   };
 
-  // Parse description with support for links and formatting
+  // Parse description with support for links, formatting, and lists
   const parseDescription = (description) => {
     if (!description) return null;
 
@@ -143,142 +143,215 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
         return;
       }
 
-      // Parse line for markdown-style links [text](url) and bare URLs
-      const parts = [];
-      let lastIndex = 0;
+      // Check if line is a list item or special format
+      const listItemMatch = line.match(/^(\s*)([•◦▪\-\*]|\d+\.)\s+(.*)$/);
+      const codeBlockMatch = line.match(/^```/);
+      const blockquoteMatch = line.match(/^>\s+(.*)$/);
 
-      // Match both [text](url) and bare URLs
-      const linkRegex = /\[([^\]]+)\]\(([^)]+)\)|\bhttps?:\/\/[^\s)\]]+|github\.com\/[^\s)\]]+/gi;
-      let match;
+      if (codeBlockMatch) {
+        // Code block marker
+        elements.push(
+          <Box
+            key={`code-${lineIdx}`}
+            component="code"
+            sx={{
+              display: 'block',
+              backgroundColor: 'rgba(0,0,0,0.05)',
+              padding: '8px',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontSize: '0.85em',
+              mb: 1,
+            }}
+          >
+            {line}
+          </Box>
+        );
+      } else if (blockquoteMatch) {
+        // Blockquote
+        elements.push(
+          <Box
+            key={`blockquote-${lineIdx}`}
+            sx={{
+              display: 'block',
+              borderLeft: '3px solid #ccc',
+              paddingLeft: '12px',
+              marginLeft: '0px',
+              fontStyle: 'italic',
+              color: 'rgba(0,0,0,0.6)',
+              mb: 0.5,
+            }}
+          >
+            {blockquoteMatch[1]}
+          </Box>
+        );
+      } else if (listItemMatch) {
+        // List item
+        const indent = listItemMatch[1].length;
+        const bullet = listItemMatch[2];
+        const content = listItemMatch[3];
 
-      while ((match = linkRegex.exec(line)) !== null) {
-        // Add text before link
-        if (match.index > lastIndex) {
-          parts.push(line.substring(lastIndex, match.index));
-        }
+        // Parse links and formatting in list item content
+        const listParts = parseLineContent(content);
 
-        if (match[1] && match[2]) {
-          // Markdown link [text](url)
-          parts.push(
-            <Link
-              key={`link-${match.index}`}
-              href={match[2]}
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{
-                color: 'primary.main',
-                textDecoration: 'underline',
-                '&:hover': {
-                  color: 'primary.dark',
-                  textDecoration: 'underline',
-                },
-              }}
-            >
-              {match[1]}
-            </Link>
-          );
-        } else {
-          // Bare URL
-          const url = match[0].includes('github.com/') ? `https://${match[0]}` : match[0];
-          const displayText = match[0].length > 50 ? `${match[0].substring(0, 47)}...` : match[0];
-          parts.push(
-            <Link
-              key={`link-${match.index}`}
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              sx={{
-                color: 'primary.main',
-                textDecoration: 'underline',
-                wordBreak: 'break-all',
-                '&:hover': {
-                  color: 'primary.dark',
-                  textDecoration: 'underline',
-                },
-              }}
-            >
-              {displayText}
-            </Link>
-          );
-        }
+        elements.push(
+          <Box
+            key={`list-${lineIdx}`}
+            sx={{
+              display: 'block',
+              marginLeft: `${indent * 8}px`,
+              marginBottom: '4px',
+              '& strong': {
+                fontWeight: 600,
+              },
+              '& em': {
+                fontStyle: 'italic',
+              },
+            }}
+          >
+            <span style={{ marginRight: '8px', fontWeight: 500 }}>{bullet}</span>
+            {listParts}
+          </Box>
+        );
+      } else {
+        // Regular paragraph
+        const parts = parseLineContent(line);
 
-        lastIndex = match.index + match[0].length;
+        elements.push(
+          <Box key={`line-${lineIdx}`} sx={{ display: 'block', mb: 0.5 }}>
+            {parts}
+          </Box>
+        );
       }
-
-      // Add remaining text
-      if (lastIndex < line.length) {
-        parts.push(line.substring(lastIndex));
-      }
-
-      // Handle special formatting in the line
-      const formattedParts = formatLineText(parts);
-
-      // Add line with formatted content
-      elements.push(
-        <Box key={`line-${lineIdx}`} sx={{ display: 'block', mb: 0.5 }}>
-          {formattedParts.length > 0 ? formattedParts : line}
-        </Box>
-      );
     });
 
     return elements.length > 0 ? elements : null;
   };
 
-  // Apply text formatting (bold, italic, code, etc.)
-  const formatLineText = (parts) => {
-    return parts.map((part, idx) => {
-      if (typeof part !== 'string') {
-        return part; // It's already a React component (Link)
+  // Parse line content for links and formatting
+  const parseLineContent = (line) => {
+    const parts = [];
+    let lastIndex = 0;
+
+    // Match both [text](url) and bare URLs
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)|\bhttps?:\/\/[^\s)\]]+|github\.com\/[^\s)\]]+/gi;
+    let match;
+
+    while ((match = linkRegex.exec(line)) !== null) {
+      // Add text before link
+      if (match.index > lastIndex) {
+        const textBefore = line.substring(lastIndex, match.index);
+        const formatted = applyTextFormatting(textBefore);
+        parts.push(formatted);
       }
 
-      const formatted = [];
-      let lastIndex = 0;
-
-      // Bold: **text**
-      let boldRegex = /\*\*([^*]+)\*\*/g;
-      let match;
-      const textParts = [];
-
-      while ((match = boldRegex.exec(part)) !== null) {
-        if (match.index > lastIndex) {
-          textParts.push(part.substring(lastIndex, match.index));
-        }
-        textParts.push(
-          <strong key={`bold-${idx}-${match.index}`}>{match[1]}</strong>
+      if (match[1] && match[2]) {
+        // Markdown link [text](url)
+        parts.push(
+          <Link
+            key={`link-${match.index}`}
+            href={match[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: 'primary.main',
+              textDecoration: 'underline',
+              '&:hover': {
+                color: 'primary.dark',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            {match[1]}
+          </Link>
         );
-        lastIndex = match.index + match[0].length;
+      } else {
+        // Bare URL
+        const url = match[0].includes('github.com/') ? `https://${match[0]}` : match[0];
+        const displayText = match[0].length > 50 ? `${match[0].substring(0, 47)}...` : match[0];
+        parts.push(
+          <Link
+            key={`link-${match.index}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: 'primary.main',
+              textDecoration: 'underline',
+              wordBreak: 'break-all',
+              '&:hover': {
+                color: 'primary.dark',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            {displayText}
+          </Link>
+        );
       }
 
-      if (lastIndex < part.length) {
-        textParts.push(part.substring(lastIndex));
-      }
+      lastIndex = match.index + match[0].length;
+    }
 
-      // Italic: *text* or _text_
-      formatted.push(...textParts.map((tp, tpIdx) => {
-        if (typeof tp !== 'string') return tp;
-        const italicParts = [];
-        let iLastIndex = 0;
-        const italicRegex = /([*_])([^*_]+)\1/g;
+    // Add remaining text
+    if (lastIndex < line.length) {
+      const remaining = line.substring(lastIndex);
+      const formatted = applyTextFormatting(remaining);
+      parts.push(formatted);
+    }
 
-        while ((match = italicRegex.exec(tp)) !== null) {
-          if (match.index > iLastIndex) {
-            italicParts.push(tp.substring(iLastIndex, match.index));
+    return parts.length > 0 ? parts : line;
+  };
+
+  // Apply text formatting (bold, italic, code, strikethrough)
+  const applyTextFormatting = (text) => {
+    if (!text) return text;
+
+    const elements = [];
+    let lastIndex = 0;
+
+    // Process all formatting in order: bold, italic, code, strikethrough
+    const formattingRules = [
+      { regex: /\*\*([^*]+)\*\*/g, tag: 'strong', wrap: (content) => <strong key={`${Math.random()}`}>{content}</strong> },
+      { regex: /(?<!\*)\*([^*]+)\*(?!\*)/g, tag: 'em', wrap: (content) => <em key={`${Math.random()}`}>{content}</em> },
+      { regex: /_([^_]+)_/g, tag: 'em', wrap: (content) => <em key={`${Math.random()}`}>{content}</em> },
+      { regex: /`([^`]+)`/g, tag: 'code', wrap: (content) => <code key={`${Math.random()}`} style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '2px 4px', borderRadius: '3px' }}>{content}</code> },
+      { regex: /~~([^~]+)~~/g, tag: 'del', wrap: (content) => <del key={`${Math.random()}`}>{content}</del> },
+    ];
+
+    // Simple approach: apply formatting sequentially
+    let result = [text];
+
+    formattingRules.forEach((rule) => {
+      const newResult = [];
+      result.forEach((part) => {
+        if (typeof part === 'string') {
+          let lastIdx = 0;
+          let match;
+          const tempElements = [];
+
+          while ((match = rule.regex.exec(part)) !== null) {
+            if (match.index > lastIdx) {
+              tempElements.push(part.substring(lastIdx, match.index));
+            }
+            tempElements.push(rule.wrap(match[1]));
+            lastIdx = match.index + match[0].length;
           }
-          italicParts.push(
-            <em key={`italic-${idx}-${tpIdx}-${match.index}`}>{match[2]}</em>
-          );
-          iLastIndex = match.index + match[0].length;
+
+          if (lastIdx < part.length) {
+            tempElements.push(part.substring(lastIdx));
+          }
+
+          newResult.push(...(tempElements.length > 0 ? tempElements : [part]));
+        } else {
+          newResult.push(part);
         }
+      });
 
-        if (iLastIndex < tp.length) {
-          italicParts.push(tp.substring(iLastIndex));
-        }
-
-        return italicParts.length > 0 ? italicParts : tp;
-      }).flat());
-
-      return formatted;
+      result = newResult;
     });
+
+    return result;
   };
 
   const jiraUrl = getJiraUrl();
@@ -348,20 +421,9 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                   fontFamily: 'inherit',
                   lineHeight: 1.6,
                   mt: 1,
-                  '& strong': {
-                    fontWeight: 600,
-                    color: 'inherit',
-                  },
-                  '& em': {
-                    fontStyle: 'italic',
-                    color: 'inherit',
-                  },
-                  '& a': {
-                    color: 'primary.main',
-                    textDecoration: 'underline',
-                    '&:hover': {
-                      color: 'primary.dark',
-                    },
+                  '& code': {
+                    fontFamily: 'monospace',
+                    fontSize: '0.9em',
                   },
                 }}
               >
