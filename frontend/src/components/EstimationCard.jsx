@@ -190,13 +190,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
               {issue.description}
             </Typography>
           </Box>
-          {userEstimate && !isEditing && (
-            <Box sx={{ textAlign: 'right', ml: 2 }}>
-              <Typography variant="caption" color="textSecondary">
-                {userEstimate.is_joker ? '✓ Voted' : '✓ Estimated'}
-              </Typography>
-            </Box>
-          )}
         </Box>
 
         {issue.story_points && (
