@@ -130,15 +130,155 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     return null;
   };
 
-  // Format description text with line breaks
-  const formatDescription = (description) => {
-    if (!description) return '';
-    return description.split('\n').map((line, idx) => (
-      <React.Fragment key={idx}>
-        {line}
-        {idx < description.split('\n').length - 1 && <br />}
-      </React.Fragment>
-    ));
+  // Parse description with support for links and formatting
+  const parseDescription = (description) => {
+    if (!description) return null;
+
+    const lines = description.split('\n');
+    const elements = [];
+
+    lines.forEach((line, lineIdx) => {
+      if (!line.trim()) {
+        elements.push(<br key={`empty-${lineIdx}`} />);
+        return;
+      }
+
+      // Parse line for markdown-style links [text](url) and bare URLs
+      const parts = [];
+      let lastIndex = 0;
+
+      // Match both [text](url) and bare URLs
+      const linkRegex = /\[([^\]]+)\]\(([^)]+)\)|\bhttps?:\/\/[^\s)\]]+|github\.com\/[^\s)\]]+/gi;
+      let match;
+
+      while ((match = linkRegex.exec(line)) !== null) {
+        // Add text before link
+        if (match.index > lastIndex) {
+          parts.push(line.substring(lastIndex, match.index));
+        }
+
+        if (match[1] && match[2]) {
+          // Markdown link [text](url)
+          parts.push(
+            <Link
+              key={`link-${match.index}`}
+              href={match[2]}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                color: 'primary.main',
+                textDecoration: 'underline',
+                '&:hover': {
+                  color: 'primary.dark',
+                  textDecoration: 'underline',
+                },
+              }}
+            >
+              {match[1]}
+            </Link>
+          );
+        } else {
+          // Bare URL
+          const url = match[0].includes('github.com/') ? `https://${match[0]}` : match[0];
+          const displayText = match[0].length > 50 ? `${match[0].substring(0, 47)}...` : match[0];
+          parts.push(
+            <Link
+              key={`link-${match.index}`}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              sx={{
+                color: 'primary.main',
+                textDecoration: 'underline',
+                wordBreak: 'break-all',
+                '&:hover': {
+                  color: 'primary.dark',
+                  textDecoration: 'underline',
+                },
+              }}
+            >
+              {displayText}
+            </Link>
+          );
+        }
+
+        lastIndex = match.index + match[0].length;
+      }
+
+      // Add remaining text
+      if (lastIndex < line.length) {
+        parts.push(line.substring(lastIndex));
+      }
+
+      // Handle special formatting in the line
+      const formattedParts = formatLineText(parts);
+
+      // Add line with formatted content
+      elements.push(
+        <Box key={`line-${lineIdx}`} sx={{ display: 'block', mb: 0.5 }}>
+          {formattedParts.length > 0 ? formattedParts : line}
+        </Box>
+      );
+    });
+
+    return elements.length > 0 ? elements : null;
+  };
+
+  // Apply text formatting (bold, italic, code, etc.)
+  const formatLineText = (parts) => {
+    return parts.map((part, idx) => {
+      if (typeof part !== 'string') {
+        return part; // It's already a React component (Link)
+      }
+
+      const formatted = [];
+      let lastIndex = 0;
+
+      // Bold: **text**
+      let boldRegex = /\*\*([^*]+)\*\*/g;
+      let match;
+      const textParts = [];
+
+      while ((match = boldRegex.exec(part)) !== null) {
+        if (match.index > lastIndex) {
+          textParts.push(part.substring(lastIndex, match.index));
+        }
+        textParts.push(
+          <strong key={`bold-${idx}-${match.index}`}>{match[1]}</strong>
+        );
+        lastIndex = match.index + match[0].length;
+      }
+
+      if (lastIndex < part.length) {
+        textParts.push(part.substring(lastIndex));
+      }
+
+      // Italic: *text* or _text_
+      formatted.push(...textParts.map((tp, tpIdx) => {
+        if (typeof tp !== 'string') return tp;
+        const italicParts = [];
+        let iLastIndex = 0;
+        const italicRegex = /([*_])([^*_]+)\1/g;
+
+        while ((match = italicRegex.exec(tp)) !== null) {
+          if (match.index > iLastIndex) {
+            italicParts.push(tp.substring(iLastIndex, match.index));
+          }
+          italicParts.push(
+            <em key={`italic-${idx}-${tpIdx}-${match.index}`}>{match[2]}</em>
+          );
+          iLastIndex = match.index + match[0].length;
+        }
+
+        if (iLastIndex < tp.length) {
+          italicParts.push(tp.substring(iLastIndex));
+        }
+
+        return italicParts.length > 0 ? italicParts : tp;
+      }).flat());
+
+      return formatted;
+    });
   };
 
   const jiraUrl = getJiraUrl();
@@ -198,17 +338,34 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
               </Typography>
             )}
             {issue.description && (
-              <Typography 
-                variant="body2" 
-                color="textSecondary" 
-                paragraph
+              <Typography
+                variant="body2"
+                color="textSecondary"
+                component="div"
                 sx={{
                   whiteSpace: 'pre-wrap',
                   wordWrap: 'break-word',
                   fontFamily: 'inherit',
+                  lineHeight: 1.6,
+                  mt: 1,
+                  '& strong': {
+                    fontWeight: 600,
+                    color: 'inherit',
+                  },
+                  '& em': {
+                    fontStyle: 'italic',
+                    color: 'inherit',
+                  },
+                  '& a': {
+                    color: 'primary.main',
+                    textDecoration: 'underline',
+                    '&:hover': {
+                      color: 'primary.dark',
+                    },
+                  },
                 }}
               >
-                {formatDescription(issue.description)}
+                {parseDescription(issue.description)}
               </Typography>
             )}
           </Box>
