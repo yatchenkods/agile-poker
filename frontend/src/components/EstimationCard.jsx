@@ -178,9 +178,11 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
             key={`codeblock-${idx}`}
             sx={{
               display: 'block',
+              position: 'relative',
               backgroundColor: bgColor,
               color: textColor,
               padding: '16px',
+              paddingTop: codeBlockLanguage ? '40px' : '16px',
               borderRadius: '6px',
               fontFamily: 'monospace',
               fontSize: '0.9em',
@@ -191,22 +193,27 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
             }}
           >
             {codeBlockLanguage && (
-              <Chip
-                label={codeBlockLanguage}
-                size="small"
+              <Box
                 sx={{
                   position: 'absolute',
-                  right: '8px',
                   top: '8px',
-                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  right: '8px',
+                  backgroundColor: 'rgba(0,0,0,0.25)',
                   color: 'inherit',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.75em',
                   fontWeight: 'bold',
                   textTransform: 'uppercase',
-                  fontSize: '0.7em',
+                  fontFamily: 'sans-serif',
+                  letterSpacing: '0.5px',
+                  border: '1px solid rgba(255,255,255,0.2)',
                 }}
-              />
+              >
+                {codeBlockLanguage}
+              </Box>
             )}
-            <pre style={{ margin: 0, overflow: 'auto' }}>{codeContent}</pre>
+            <pre style={{ margin: 0, overflow: 'auto', fontFamily: 'monospace' }}>{codeContent}</pre>
           </Box>
         );
       }
