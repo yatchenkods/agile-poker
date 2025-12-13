@@ -4,6 +4,7 @@ import requests
 import logging
 from typing import List, Dict, Tuple
 from app.config import settings
+from app.utils.jira_text_parser import parse_jira_description
 
 logger = logging.getLogger(__name__)
 
@@ -284,11 +285,15 @@ class JiraService:
 
             # Build Jira URL for the issue
             jira_url = f"{self.jira_url}/browse/{key}"
+            
+            # Parse description using Jira text parser
+            raw_description = issue_data.get("fields", {}).get("description") or ""
+            parsed_description = parse_jira_description(raw_description)
 
             issue_obj = {
                 "key": key,
                 "title": title,
-                "description": issue_data.get("fields", {}).get("description") or "",
+                "description": parsed_description,
                 "jira_url": jira_url,
             }
             

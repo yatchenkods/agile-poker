@@ -1,11 +1,37 @@
 import React, { useState, useEffect } from 'react';
-import { Box, Card, CardContent, Typography, Button, Alert, Divider, Link } from '@mui/material';
+import { Box, Card, CardContent, Typography, Button, Alert, Divider, Link, Chip } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { api } from '../services/api';
 
 const STORY_POINTS = [1, 2, 4, 8, 16];
+
+// Common programming languages for syntax highlighting themes
+const LANGUAGE_COLORS = {
+  python: '#3776ab',
+  javascript: '#f7df1e',
+  typescript: '#3178c6',
+  java: '#007396',
+  cpp: '#00599c',
+  c: '#a8b9cc',
+  csharp: '#239120',
+  php: '#777bb4',
+  ruby: '#cc342d',
+  go: '#00add8',
+  rust: '#ce422b',
+  kotlin: '#7f52ff',
+  swift: '#fa7343',
+  sql: '#336791',
+  bash: '#4eaa25',
+  shell: '#4eaa25',
+  html: '#e34c26',
+  css: '#563d7c',
+  json: '#292929',
+  xml: '#666666',
+  yaml: '#cb171e',
+  markdown: '#083fa1',
+};
 
 function EstimationCard({ issue, session, onEstimateSubmitted }) {
   // Track selected points only for THIS issue
@@ -130,6 +156,298 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     return null;
   };
 
+  // Parse description with support for links, formatting, lists, and code blocks
+  const parseDescription = (description) => {
+    if (!description) return null;
+
+    const lines = description.split('\n');
+    const elements = [];
+    let inCodeBlock = false;
+    let codeBlockLanguage = '';
+    let codeBlockLines = [];
+    let codeBlockStartIdx = null;
+
+    const flushCodeBlock = (idx) => {
+      if (codeBlockLines.length > 0) {
+        const codeContent = codeBlockLines.join('\n').trim();
+        const bgColor = LANGUAGE_COLORS[codeBlockLanguage.toLowerCase()] || '#2d2d2d';
+        const textColor = ['javascript', 'json', 'css'].includes(codeBlockLanguage.toLowerCase()) ? '#fff' : '#f8f8f2';
+
+        elements.push(
+          <Box
+            key={`codeblock-${idx}`}
+            sx={{
+              display: 'block',
+              position: 'relative',
+              backgroundColor: bgColor,
+              color: textColor,
+              padding: '16px',
+              paddingTop: codeBlockLanguage ? '40px' : '16px',
+              borderRadius: '6px',
+              fontFamily: 'monospace',
+              fontSize: '0.9em',
+              lineHeight: '1.5',
+              overflow: 'auto',
+              mb: 2,
+              border: '1px solid rgba(0,0,0,0.1)',
+            }}
+          >
+            {codeBlockLanguage && (
+              <Box
+                sx={{
+                  position: 'absolute',
+                  top: '8px',
+                  right: '8px',
+                  backgroundColor: 'rgba(0,0,0,0.25)',
+                  color: 'inherit',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontSize: '0.75em',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase',
+                  fontFamily: 'sans-serif',
+                  letterSpacing: '0.5px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                }}
+              >
+                {codeBlockLanguage}
+              </Box>
+            )}
+            <pre style={{ margin: 0, overflow: 'auto', fontFamily: 'monospace' }}>{codeContent}</pre>
+          </Box>
+        );
+      }
+      codeBlockLines = [];
+      codeBlockLanguage = '';
+      codeBlockStartIdx = null;
+    };
+
+    lines.forEach((line, lineIdx) => {
+      // Check for code block start/end
+      const codeBlockMatch = line.match(/^```(\w*)/);
+
+      if (codeBlockMatch) {
+        if (inCodeBlock) {
+          // End of code block
+          flushCodeBlock(lineIdx);
+          inCodeBlock = false;
+        } else {
+          // Start of code block
+          inCodeBlock = true;
+          codeBlockLanguage = codeBlockMatch[1] || '';
+          codeBlockStartIdx = lineIdx;
+        }
+        return; // Skip the ``` line itself
+      }
+
+      // If inside code block, collect lines
+      if (inCodeBlock) {
+        codeBlockLines.push(line);
+        return;
+      }
+
+      // Regular content processing
+      if (!line.trim()) {
+        elements.push(<br key={`empty-${lineIdx}`} />);
+        return;
+      }
+
+      // Check if line is a list item or special format
+      const listItemMatch = line.match(/^(\s*)([•◦▪\-\*]|\d+\.)\s+(.*)$/);
+      const blockquoteMatch = line.match(/^>\s+(.*)$/);
+
+      if (blockquoteMatch) {
+        // Blockquote
+        elements.push(
+          <Box
+            key={`blockquote-${lineIdx}`}
+            sx={{
+              display: 'block',
+              borderLeft: '3px solid #ccc',
+              paddingLeft: '12px',
+              marginLeft: '0px',
+              fontStyle: 'italic',
+              color: 'rgba(0,0,0,0.6)',
+              mb: 0.5,
+            }}
+          >
+            {blockquoteMatch[1]}
+          </Box>
+        );
+      } else if (listItemMatch) {
+        // List item
+        const indent = listItemMatch[1].length;
+        const bullet = listItemMatch[2];
+        const content = listItemMatch[3];
+
+        // Parse links and formatting in list item content
+        const listParts = parseLineContent(content);
+
+        elements.push(
+          <Box
+            key={`list-${lineIdx}`}
+            sx={{
+              display: 'block',
+              marginLeft: `${indent * 8}px`,
+              marginBottom: '4px',
+              '& strong': {
+                fontWeight: 600,
+              },
+              '& em': {
+                fontStyle: 'italic',
+              },
+            }}
+          >
+            <span style={{ marginRight: '8px', fontWeight: 500 }}>{bullet}</span>
+            {listParts}
+          </Box>
+        );
+      } else {
+        // Regular paragraph
+        const parts = parseLineContent(line);
+
+        elements.push(
+          <Box key={`line-${lineIdx}`} sx={{ display: 'block', mb: 0.5 }}>
+            {parts}
+          </Box>
+        );
+      }
+    });
+
+    // Flush any remaining code block
+    if (inCodeBlock) {
+      flushCodeBlock(lines.length);
+    }
+
+    return elements.length > 0 ? elements : null;
+  };
+
+  // Parse line content for links and formatting
+  const parseLineContent = (line) => {
+    const parts = [];
+    let lastIndex = 0;
+
+    // Match both [text](url) and bare URLs
+    const linkRegex = /\[([^\]]+)\]\(([^)]+)\)|\bhttps?:\/\/[^\s)\]]+|github\.com\/[^\s)\]]+/gi;
+    let match;
+
+    while ((match = linkRegex.exec(line)) !== null) {
+      // Add text before link
+      if (match.index > lastIndex) {
+        const textBefore = line.substring(lastIndex, match.index);
+        const formatted = applyTextFormatting(textBefore);
+        parts.push(formatted);
+      }
+
+      if (match[1] && match[2]) {
+        // Markdown link [text](url)
+        parts.push(
+          <Link
+            key={`link-${match.index}`}
+            href={match[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: 'primary.main',
+              textDecoration: 'underline',
+              '&:hover': {
+                color: 'primary.dark',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            {match[1]}
+          </Link>
+        );
+      } else {
+        // Bare URL
+        const url = match[0].includes('github.com/') ? `https://${match[0]}` : match[0];
+        const displayText = match[0].length > 50 ? `${match[0].substring(0, 47)}...` : match[0];
+        parts.push(
+          <Link
+            key={`link-${match.index}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            sx={{
+              color: 'primary.main',
+              textDecoration: 'underline',
+              wordBreak: 'break-all',
+              '&:hover': {
+                color: 'primary.dark',
+                textDecoration: 'underline',
+              },
+            }}
+          >
+            {displayText}
+          </Link>
+        );
+      }
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Add remaining text
+    if (lastIndex < line.length) {
+      const remaining = line.substring(lastIndex);
+      const formatted = applyTextFormatting(remaining);
+      parts.push(formatted);
+    }
+
+    return parts.length > 0 ? parts : line;
+  };
+
+  // Apply text formatting (bold, italic, code, strikethrough)
+  const applyTextFormatting = (text) => {
+    if (!text) return text;
+
+    const elements = [];
+    let lastIndex = 0;
+
+    // Process all formatting in order: bold, italic, code, strikethrough
+    const formattingRules = [
+      { regex: /\*\*([^*]+)\*\*/g, tag: 'strong', wrap: (content) => <strong key={`${Math.random()}`}>{content}</strong> },
+      { regex: /(?<!\*)\*([^*]+)\*(?!\*)/g, tag: 'em', wrap: (content) => <em key={`${Math.random()}`}>{content}</em> },
+      { regex: /_([^_]+)_/g, tag: 'em', wrap: (content) => <em key={`${Math.random()}`}>{content}</em> },
+      { regex: /`([^`]+)`/g, tag: 'code', wrap: (content) => <code key={`${Math.random()}`} style={{ backgroundColor: 'rgba(0,0,0,0.05)', padding: '2px 4px', borderRadius: '3px', fontFamily: 'monospace', fontSize: '0.9em' }}>{content}</code> },
+      { regex: /~~([^~]+)~~/g, tag: 'del', wrap: (content) => <del key={`${Math.random()}`}>{content}</del> },
+    ];
+
+    // Simple approach: apply formatting sequentially
+    let result = [text];
+
+    formattingRules.forEach((rule) => {
+      const newResult = [];
+      result.forEach((part) => {
+        if (typeof part === 'string') {
+          let lastIdx = 0;
+          let match;
+          const tempElements = [];
+
+          while ((match = rule.regex.exec(part)) !== null) {
+            if (match.index > lastIdx) {
+              tempElements.push(part.substring(lastIdx, match.index));
+            }
+            tempElements.push(rule.wrap(match[1]));
+            lastIdx = match.index + match[0].length;
+          }
+
+          if (lastIdx < part.length) {
+            tempElements.push(part.substring(lastIdx));
+          }
+
+          newResult.push(...(tempElements.length > 0 ? tempElements : [part]));
+        } else {
+          newResult.push(part);
+        }
+      });
+
+      result = newResult;
+    });
+
+    return result;
+  };
+
   const jiraUrl = getJiraUrl();
 
   if (error && error !== 'Not authenticated') {
@@ -186,9 +504,30 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                 {issue.jira_key}: {issue.title}
               </Typography>
             )}
-            <Typography variant="body2" color="textSecondary" paragraph>
-              {issue.description}
-            </Typography>
+            {issue.description && (
+              <Typography
+                variant="body2"
+                color="textSecondary"
+                component="div"
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordWrap: 'break-word',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.6,
+                  mt: 1,
+                  '& code': {
+                    fontFamily: 'monospace',
+                    fontSize: '0.9em',
+                  },
+                  '& pre': {
+                    whiteSpace: 'pre-wrap',
+                    wordWrap: 'break-word',
+                  },
+                }}
+              >
+                {parseDescription(issue.description)}
+              </Typography>
+            )}
           </Box>
         </Box>
 
