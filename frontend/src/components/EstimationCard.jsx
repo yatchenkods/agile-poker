@@ -130,6 +130,17 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     return null;
   };
 
+  // Format description text with line breaks
+  const formatDescription = (description) => {
+    if (!description) return '';
+    return description.split('\n').map((line, idx) => (
+      <React.Fragment key={idx}>
+        {line}
+        {idx < description.split('\n').length - 1 && <br />}
+      </React.Fragment>
+    ));
+  };
+
   const jiraUrl = getJiraUrl();
 
   if (error && error !== 'Not authenticated') {
@@ -186,9 +197,20 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                 {issue.jira_key}: {issue.title}
               </Typography>
             )}
-            <Typography variant="body2" color="textSecondary" paragraph>
-              {issue.description}
-            </Typography>
+            {issue.description && (
+              <Typography 
+                variant="body2" 
+                color="textSecondary" 
+                paragraph
+                sx={{
+                  whiteSpace: 'pre-wrap',
+                  wordWrap: 'break-word',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {formatDescription(issue.description)}
+              </Typography>
+            )}
           </Box>
         </Box>
 
