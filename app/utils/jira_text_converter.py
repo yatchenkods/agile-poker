@@ -1,34 +1,35 @@
 """Jira text format converter
 
-Converts Jira markup formats (Atlassian Document Format, wiki markup) to plain text
+Converts Jira markup formats (Atlassian Document Format, wiki markup) to HTML
 while preserving structure and readability.
 """
 
 import json
 import logging
+import html
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 
 class JiraTextConverter:
-    """Convert Jira text formats to readable plain text"""
+    """Convert Jira text formats to HTML"""
 
     @staticmethod
     def convert(text: Optional[str]) -> str:
         """
-        Convert Jira formatted text to plain text.
+        Convert Jira formatted text to HTML.
         
         Handles:
         - Atlassian Document Format (ADF) JSON
         - Jira wiki markup
-        - Plain text (returns as-is)
+        - Plain text (returns as-is wrapped in <p> tag)
         
         Args:
             text: Jira formatted text (ADF, wiki markup, or plain text)
             
         Returns:
-            Converted plain text with preserved structure
+            Converted HTML with preserved structure
         """
         if not text:
             return ""
@@ -51,7 +52,7 @@ class JiraTextConverter:
     @staticmethod
     def _convert_adf(json_text: str) -> str:
         """
-        Convert Atlassian Document Format (ADF) JSON to plain text.
+        Convert Atlassian Document Format (ADF) JSON to HTML.
         
         ADF is a structured JSON format used in Jira for rich text content.
         
@@ -59,16 +60,16 @@ class JiraTextConverter:
             json_text: JSON string in ADF format
             
         Returns:
-            Plain text with preserved structure
+            HTML with preserved structure
         """
         try:
             data = json.loads(json_text)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in ADF: {e}")
-            return json_text
+            return f"<p>{html.escape(json_text)}</p>"
         
         if not isinstance(data, dict):
-            return str(data)
+            return f"<p>{html.escape(str(data))}</p>"
         
         # Extract content from ADF document
         if 'content' not in data:
@@ -79,18 +80,18 @@ class JiraTextConverter:
             return ""
         
         # Convert each content block
-        result_lines = []
+        result_html = []
         for block in content:
             converted = JiraTextConverter._convert_adf_block(block)
             if converted:
-                result_lines.append(converted)
+                result_html.append(converted)
         
-        return '\n'.join(result_lines).strip()
+        return ''.join(result_html).strip()
 
     @staticmethod
     def _convert_adf_block(block: Dict[str, Any]) -> str:
         """
-        Convert a single ADF block to plain text.
+        Convert a single ADF block to HTML.
         
         Handles: paragraph, heading, bullet_list, ordered_list, code_block, etc.
         
@@ -98,7 +99,7 @@ class JiraTextConverter:
             block: Single ADF block dictionary
             
         Returns:
-            Converted text for this block
+            Converted HTML for this block
         """
         if not isinstance(block, dict):
             return ""
@@ -107,42 +108,42 @@ class JiraTextConverter:
         
         # Handle different block types
         if block_type == 'paragraph':
-            return JiraTextConverter._convert_adf_inline(block.get('content', []))
+            content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+            return f"<p>{content}</p>" if content else ""
         
         elif block_type in ('heading1', 'heading2', 'heading3', 'heading4', 'heading5', 'heading6'):
             level = int(block_type[-1])
-            prefix = '#' * level + ' '
-            text = JiraTextConverter._convert_adf_inline(block.get('content', []))
-            return prefix + text if text else ""
+            content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+            return f"<h{level}>{content}</h{level}>" if content else ""
         
         elif block_type == 'bullet_list':
-            return JiraTextConverter._convert_adf_list(block.get('content', []), bullet=True)
+            return JiraTextConverter._convert_adf_list(block.get('content', []), ordered=False)
         
         elif block_type == 'ordered_list':
-            return JiraTextConverter._convert_adf_list(block.get('content', []), bullet=False)
+            return JiraTextConverter._convert_adf_list(block.get('content', []), ordered=True)
         
         elif block_type == 'code_block':
-            text = JiraTextConverter._convert_adf_inline(block.get('content', []))
-            return f"```\n{text}\n```" if text else ""
+            content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+            return f"<pre><code>{html.escape(content)}</code></pre>" if content else ""
         
         elif block_type == 'blockquote':
-            text = JiraTextConverter._convert_adf_inline(block.get('content', []))
-            return f"> {text}" if text else ""
+            content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+            return f"<blockquote>{content}</blockquote>" if content else ""
         
         elif block_type == 'table':
             return JiraTextConverter._convert_adf_table(block)
         
         elif block_type in ('panel', 'info', 'note', 'tip', 'warning'):
             # Panels are informational blocks
-            text = JiraTextConverter._convert_adf_inline(block.get('content', []))
-            return text
+            content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+            return f"<div class='jira-panel'>{content}</div>" if content else ""
         
         return ""
 
     @staticmethod
     def _convert_adf_inline(content: List[Dict]) -> str:
         """
-        Convert ADF inline content (text with formatting) to plain text.
+        Convert ADF inline content (text with formatting) to HTML.
         
         Handles: text with marks (bold, italic, code, etc.), mentions, links, emojis
         
@@ -150,7 +151,7 @@ class JiraTextConverter:
             content: List of inline content blocks
             
         Returns:
-            Formatted plain text
+            Formatted HTML text
         """
         if not isinstance(content, list):
             return ""
@@ -161,7 +162,7 @@ class JiraTextConverter:
                 continue
             
             if item.get('type') == 'text':
-                text = item.get('text', '')
+                text = html.escape(item.get('text', ''))
                 marks = item.get('marks', [])
                 
                 # Apply text marks (formatting)
@@ -169,18 +170,19 @@ class JiraTextConverter:
                     mark_type = mark.get('type', '')
                     
                     if mark_type == 'strong':
-                        text = f"**{text}**"
+                        text = f"<strong>{text}</strong>"
                     elif mark_type == 'em':
-                        text = f"*{text}*"
+                        text = f"<em>{text}</em>"
                     elif mark_type == 'code':
-                        text = f"`{text}`"
+                        text = f"<code>{text}</code>"
                     elif mark_type == 'strikethrough':
-                        text = f"~~{text}~~"
+                        text = f"<del>{text}</del>"
                     elif mark_type == 'underline':
-                        text = f"__{text}__"
+                        text = f"<u>{text}</u>"
                     elif mark_type == 'link':
                         href = mark.get('attrs', {}).get('href', '#')
-                        text = f"[{text}]({href})"
+                        href = html.escape(href)
+                        text = f"<a href='{href}' target='_blank' rel='noopener noreferrer'>{text}</a>"
                 
                 result.append(text)
             
@@ -188,16 +190,16 @@ class JiraTextConverter:
                 # Replace mentions with @username format
                 attrs = item.get('attrs', {})
                 name = attrs.get('text', '@unknown')
-                result.append(name)
+                result.append(f"<span class='jira-mention'>@{name}</span>")
             
             elif item.get('type') == 'emoji':
                 # Include emoji or fallback to text representation
                 attrs = item.get('attrs', {})
                 text = attrs.get('text', '')
-                result.append(text)
+                result.append(html.escape(text))
             
             elif item.get('type') == 'hardBreak':
-                result.append('\n')
+                result.append('<br/>')
             
             elif item.get('type') == 'softBreak':
                 result.append(' ')
@@ -205,22 +207,24 @@ class JiraTextConverter:
         return ''.join(result).strip()
 
     @staticmethod
-    def _convert_adf_list(content: List[Dict], bullet: bool = True) -> str:
+    def _convert_adf_list(content: List[Dict], ordered: bool = False) -> str:
         """
-        Convert ADF list items to plain text.
+        Convert ADF list items to HTML.
         
         Args:
             content: List of list_item blocks
-            bullet: True for bullet list, False for ordered list
+            ordered: True for ordered list, False for bullet list
             
         Returns:
-            Formatted list as plain text
+            Formatted HTML list
         """
         if not isinstance(content, list):
             return ""
         
-        result = []
-        for idx, item in enumerate(content, 1):
+        tag = 'ol' if ordered else 'ul'
+        items = []
+        
+        for item in content:
             if item.get('type') != 'list_item':
                 continue
             
@@ -229,51 +233,62 @@ class JiraTextConverter:
             
             # Process content in list item
             for block in item_content:
-                block_text = JiraTextConverter._convert_adf_block(block)
-                if block_text:
+                if block.get('type') == 'paragraph':
+                    block_text = JiraTextConverter._convert_adf_inline(block.get('content', []))
+                    text += block_text + ' '
+                else:
+                    block_text = JiraTextConverter._convert_adf_block(block)
                     text += block_text + ' '
             
             text = text.strip()
             if text:
-                prefix = '• ' if bullet else f"{idx}. "
-                result.append(prefix + text)
+                items.append(f"<li>{text}</li>")
         
-        return '\n'.join(result)
+        if items:
+            return f"<{tag}>{''.join(items)}</{tag}>"
+        return ""
 
     @staticmethod
     def _convert_adf_table(block: Dict) -> str:
         """
-        Convert ADF table to plain text representation.
+        Convert ADF table to HTML table.
         
         Args:
             block: ADF table block
             
         Returns:
-            Simple table representation
+            HTML table
         """
         content = block.get('content', [])
         if not content:
             return ""
         
-        result = []
-        for row in content:
-            if row.get('type') != 'table_row':
+        rows = []
+        for row_block in content:
+            if row_block.get('type') != 'table_row':
                 continue
             
             cells = []
-            for cell in row.get('content', []):
+            for cell in row_block.get('content', []):
+                cell_type = cell.get('type', '')
                 cell_text = JiraTextConverter._convert_adf_inline(cell.get('content', []))
-                cells.append(cell_text)
+                
+                if cell_type == 'table_header':
+                    cells.append(f"<th>{cell_text}</th>")
+                else:
+                    cells.append(f"<td>{cell_text}</td>")
             
             if cells:
-                result.append(' | '.join(cells))
+                rows.append(f"<tr>{''.join(cells)}</tr>")
         
-        return '\n'.join(result)
+        if rows:
+            return f"<table><tbody>{''.join(rows)}</tbody></table>"
+        return ""
 
     @staticmethod
     def _convert_wiki_markup(text: str) -> str:
         """
-        Convert Jira wiki markup to plain text.
+        Convert Jira wiki markup to HTML.
         
         Handles: bold, italic, strikethrough, code, headings, lists, etc.
         
@@ -281,44 +296,128 @@ class JiraTextConverter:
             text: Text with wiki markup
             
         Returns:
-            Converted plain text
+            Converted HTML
         """
-        # Convert wiki markup patterns to markdown-like format
-        # Jira wiki: *bold* -> markdown: **bold**
-        text = text.replace('*', '**')
-        
-        # Jira wiki: _italic_ -> markdown: *italic*  
-        # (but avoid double conversion)
         import re
-        text = re.sub(r'_([^_]+)_', r'*\1*', text)
         
-        # Jira wiki: -strikethrough- -> ~~strikethrough~~
-        text = re.sub(r'-([^-]+)-', r'~~\1~~', text)
+        # Escape HTML special characters first
+        text = html.escape(text)
         
-        # Jira wiki: {{code}} -> `code`
-        text = re.sub(r'{{([^}]+)}}', r'`\1`', text)
+        # Process line by line
+        lines = text.split('\n')
+        result_lines = []
+        in_list = False
+        in_code_block = False
+        code_content = []
         
-        # Jira wiki: h1. Heading -> # Heading
-        text = re.sub(r'^h(\d)\. ', lambda m: '#' * int(m.group(1)) + ' ', text, flags=re.MULTILINE)
+        for line in lines:
+            # Handle code blocks
+            if line.strip().startswith('{code') or line.strip().startswith('{{code'):
+                in_code_block = True
+                continue
+            elif line.strip().endswith('}code}') or line.strip().endswith('code}}'):
+                if code_content:
+                    result_lines.append(f"<pre><code>{''.join(code_content)}</code></pre>")
+                in_code_block = False
+                code_content = []
+                continue
+            elif in_code_block:
+                code_content.append(line + '\n')
+                continue
+            
+            # Handle headings: h1. Title -> <h1>Title</h1>
+            heading_match = re.match(r'^h(\d)\. (.*)', line)
+            if heading_match:
+                level = heading_match.group(1)
+                title = heading_match.group(2)
+                result_lines.append(f"<h{level}>{title}</h{level}>")
+                in_list = False
+                continue
+            
+            # Handle lists
+            list_match = re.match(r'^([*\-]) (.*)', line)
+            if list_match:
+                if not in_list:
+                    result_lines.append("<ul>")
+                    in_list = True
+                item_text = list_match.group(2)
+                result_lines.append(f"<li>{item_text}</li>")
+                continue
+            
+            # Handle numbered lists
+            num_list_match = re.match(r'^# (.*)', line)
+            if num_list_match:
+                if not in_list:
+                    result_lines.append("<ol>")
+                    in_list = True
+                item_text = num_list_match.group(1)
+                result_lines.append(f"<li>{item_text}</li>")
+                continue
+            
+            # End list if we hit non-list content
+            if in_list and line.strip() and not re.match(r'^([*\-#])', line):
+                result_lines.append("</ul>" if in_list else "</ol>")
+                in_list = False
+            
+            # Handle blockquotes
+            if line.startswith('bq. '):
+                quote_text = line[4:]
+                result_lines.append(f"<blockquote>{quote_text}</blockquote>")
+                continue
+            
+            # Handle paragraphs
+            if line.strip():
+                # Apply inline formatting
+                formatted = JiraTextConverter._apply_wiki_inline_formatting(line)
+                result_lines.append(f"<p>{formatted}</p>")
+            
         
-        # Jira wiki: [Link|URL] -> [Link](URL)
-        text = re.sub(r'\[([^|\]]+)\|([^\]]+)\]', r'[\1](\2)', text)
+        # Close any open lists
+        if in_list:
+            result_lines.append("</ul>" if in_list else "</ol>")
         
-        # Clean up any remaining Jira-specific syntax
-        text = text.replace('\\', '')  # Remove escape characters
+        # Close any open code blocks
+        if code_content:
+            result_lines.append(f"<pre><code>{''.join(code_content)}</code></pre>")
         
-        return text.strip()
+        return ''.join(result_lines).strip()
+
+    @staticmethod
+    def _apply_wiki_inline_formatting(text: str) -> str:
+        """
+        Apply inline formatting to wiki markup text.
+        
+        Converts: *bold*, _italic_, -strikethrough-, {{code}}
+        """
+        import re
+        
+        # *text* -> <strong>text</strong>
+        text = re.sub(r'\*([^*]+)\*', r'<strong>\1</strong>', text)
+        
+        # _text_ -> <em>text</em>
+        text = re.sub(r'_([^_]+)_', r'<em>\1</em>', text)
+        
+        # -text- -> <del>text</del>
+        text = re.sub(r'-([^-]+)-', r'<del>\1</del>', text)
+        
+        # {{text}} -> <code>text</code>
+        text = re.sub(r'{{([^}]+)}}', r'<code>\1</code>', text)
+        
+        # [Link|URL] -> <a href="URL">Link</a>
+        text = re.sub(r'\[([^|\]]+)\|([^\]]+)\]', r'<a href="\2" target="_blank" rel="noopener noreferrer">\1</a>', text)
+        
+        return text
 
 
 # Convenience function
 def convert_jira_text(text: Optional[str]) -> str:
     """
-    Convenience function to convert Jira formatted text.
+    Convenience function to convert Jira formatted text to HTML.
     
     Args:
         text: Jira formatted text
         
     Returns:
-        Converted plain text
+        Converted HTML
     """
     return JiraTextConverter.convert(text)
