@@ -7,6 +7,10 @@ from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
+# Track list nesting for proper indentation
+_list_depth = 0
+_list_type_stack = []  # Track ordered vs unordered lists
+
 
 def parse_jira_rich_text(text: Union[str, dict]) -> str:
     """
@@ -86,6 +90,31 @@ def _format_plain_text_with_urls(text: str) -> str:
     return text
 
 
+def _get_list_prefix(list_type: str, index: int) -> str:
+    """
+    Get the appropriate prefix for list items.
+    
+    Args:
+        list_type: 'bulletList' or 'orderedList'
+        index: Item index (for ordered lists)
+        
+    Returns:
+        Prefix string with indentation
+    """
+    global _list_depth
+    # Indentation based on depth
+    indent = '  ' * _list_depth
+    
+    if list_type == 'orderedList':
+        # Use numbers for ordered lists
+        return f"{indent}{index}. "
+    else:
+        # Use bullets for unordered lists, varying by depth
+        bullets = ['•', '◦', '▪']  # Different bullets for different depths
+        bullet = bullets[_list_depth % len(bullets)]
+        return f"{indent}{bullet} "
+
+
 def _extract_text_from_jira_doc(doc: dict) -> str:
     """
     Recursively extract text from Jira document structure.
@@ -96,14 +125,24 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
     Returns:
         Extracted plain text
     """
+    global _list_depth, _list_type_stack
+    
+    # Reset depth at start
+    _list_depth = 0
+    _list_type_stack = []
+    
     texts = []
     
-    def extract_content(content):
+    def extract_content(content, parent_list_type=None, item_index=0):
         """Recursively extract text from content array"""
+        global _list_depth, _list_type_stack
+        
         if not isinstance(content, list):
             return
         
-        for item in content:
+        ordered_item_index = 1  # Counter for ordered list items
+        
+        for idx, item in enumerate(content):
             if not isinstance(item, dict):
                 continue
             
@@ -131,24 +170,101 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
                 if texts and texts[-1] != '\n':
                     texts.append('\n')
             
-            # Handle lists
-            elif item_type == 'bulletList' or item_type == 'orderedList':
+            # Handle bullet lists
+            elif item_type == 'bulletList':
+                if texts and texts[-1] != '\n':
+                    texts.append('\n')
+                _list_depth += 1
+                _list_type_stack.append('bulletList')
                 nested_content = item.get('content', [])
                 if nested_content:
-                    extract_content(nested_content)
+                    extract_content(nested_content, 'bulletList')
+                _list_type_stack.pop()
+                _list_depth -= 1
+                # Add line break after list
+                if texts and texts[-1] != '\n':
+                    texts.append('\n')
+            
+            # Handle ordered lists
+            elif item_type == 'orderedList':
+                if texts and texts[-1] != '\n':
+                    texts.append('\n')
+                _list_depth += 1
+                _list_type_stack.append('orderedList')
+                nested_content = item.get('content', [])
+                if nested_content:
+                    extract_content(nested_content, 'orderedList')
+                _list_type_stack.pop()
+                _list_depth -= 1
                 # Add line break after list
                 if texts and texts[-1] != '\n':
                     texts.append('\n')
             
             # Handle list items
             elif item_type == 'listItem':
-                # Add bullet or number prefix
+                # Add line break before list item if needed
                 if texts and texts[-1] != '\n':
                     texts.append('\n')
-                texts.append('• ')  # Use bullet for all lists
+                
+                # Get appropriate prefix based on parent list type
+                if parent_list_type == 'orderedList':
+                    prefix = _get_list_prefix('orderedList', ordered_item_index)
+                    ordered_item_index += 1
+                else:
+                    prefix = _get_list_prefix('bulletList', 0)
+                
+                texts.append(prefix)
+                
+                # Process list item content
                 nested_content = item.get('content', [])
                 if nested_content:
-                    extract_content(nested_content)
+                    # Collect text from nested content
+                    item_texts = []
+                    for nested_item in nested_content:
+                        if not isinstance(nested_item, dict):
+                            continue
+                        
+                        nested_type = nested_item.get('type')
+                        
+                        # Handle nested lists
+                        if nested_type in ('bulletList', 'orderedList'):
+                            # Flush current item
+                            if item_texts and item_texts[-1] != '\n':
+                                texts.extend(item_texts)
+                                texts.append('\n')
+                                item_texts = []
+                            
+                            # Process nested list
+                            _list_depth += 1
+                            _list_type_stack.append(nested_type)
+                            nested_content_of_list = nested_item.get('content', [])
+                            if nested_content_of_list:
+                                extract_content(nested_content_of_list, nested_type)
+                            _list_type_stack.pop()
+                            _list_depth -= 1
+                        else:
+                            # Regular content in list item
+                            if nested_type == 'text':
+                                text_content = nested_item.get('text', '')
+                                if text_content:
+                                    marks = nested_item.get('marks', [])
+                                    formatted_text = _apply_text_formatting(text_content, marks)
+                                    item_texts.append(formatted_text)
+                            elif nested_type == 'hardBreak':
+                                item_texts.append('\n')
+                            elif nested_type == 'paragraph':
+                                p_content = nested_item.get('content', [])
+                                for p_item in p_content:
+                                    if not isinstance(p_item, dict):
+                                        continue
+                                    if p_item.get('type') == 'text':
+                                        text_content = p_item.get('text', '')
+                                        if text_content:
+                                            marks = p_item.get('marks', [])
+                                            formatted_text = _apply_text_formatting(text_content, marks)
+                                            item_texts.append(formatted_text)
+                    
+                    texts.extend(item_texts)
             
             # Handle code blocks
             elif item_type == 'codeBlock':
@@ -299,7 +415,7 @@ def parse_jira_description(description: Optional[str]) -> str:
         description: Description from Jira API
         
     Returns:
-        Clean plain text description with preserved formatting
+        Clean plain text description with preserved formatting and lists
     """
     if not description:
         return ""
