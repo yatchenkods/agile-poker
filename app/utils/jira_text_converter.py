@@ -229,20 +229,31 @@ class JiraTextConverter:
                 continue
             
             item_content = item.get('content', [])
-            text = ''
+            if not item_content:
+                continue
             
-            # Process content in list item
+            # Process first paragraph in list item
+            first_para_content = ""
+            nested_html = ""
+            
             for block in item_content:
-                if block.get('type') == 'paragraph':
-                    block_text = JiraTextConverter._convert_adf_inline(block.get('content', []))
-                    text += block_text + ' '
-                else:
-                    block_text = JiraTextConverter._convert_adf_block(block)
-                    text += block_text + ' '
+                block_type = block.get('type', '')
+                
+                if block_type == 'paragraph':
+                    # Only use first paragraph's content for list item text
+                    if not first_para_content:
+                        first_para_content = JiraTextConverter._convert_adf_inline(block.get('content', []))
+                elif block_type in ('bullet_list', 'ordered_list'):
+                    # Nested lists
+                    nested_html += JiraTextConverter._convert_adf_block(block)
             
-            text = text.strip()
-            if text:
-                items.append(f"<li>{text}</li>")
+            # Create list item with content and nested lists
+            li_content = first_para_content
+            if nested_html:
+                li_content += nested_html
+            
+            if li_content:
+                items.append(f"<li>{li_content}</li>")
         
         if items:
             return f"<{tag}>{''.join(items)}</{tag}>"
@@ -300,81 +311,114 @@ class JiraTextConverter:
         """
         import re
         
-        # Escape HTML special characters first
-        text = html.escape(text)
-        
         # Process line by line
         lines = text.split('\n')
         result_lines = []
         in_list = False
+        list_type = None  # Track 'ul' or 'ol'
         in_code_block = False
         code_content = []
         
-        for line in lines:
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            
             # Handle code blocks
             if line.strip().startswith('{code') or line.strip().startswith('{{code'):
                 in_code_block = True
+                i += 1
                 continue
             elif line.strip().endswith('}code}') or line.strip().endswith('code}}'):
                 if code_content:
                     result_lines.append(f"<pre><code>{''.join(code_content)}</code></pre>")
                 in_code_block = False
                 code_content = []
+                i += 1
                 continue
             elif in_code_block:
-                code_content.append(line + '\n')
+                code_content.append(html.escape(line) + '\n')
+                i += 1
                 continue
             
             # Handle headings: h1. Title -> <h1>Title</h1>
             heading_match = re.match(r'^h(\d)\. (.*)', line)
             if heading_match:
+                if in_list:
+                    result_lines.append(f"</{list_type}>")
+                    in_list = False
+                    list_type = None
                 level = heading_match.group(1)
-                title = heading_match.group(2)
+                title = html.escape(heading_match.group(2))
                 result_lines.append(f"<h{level}>{title}</h{level}>")
-                in_list = False
+                i += 1
                 continue
             
-            # Handle lists
-            list_match = re.match(r'^([*\-]) (.*)', line)
-            if list_match:
-                if not in_list:
+            # Handle bullet lists (* or -)
+            bullet_match = re.match(r'^([*\-]+) (.*)', line)
+            if bullet_match:
+                depth = len(bullet_match.group(1))
+                item_text = html.escape(bullet_match.group(2))
+                
+                # Apply inline formatting
+                item_text = JiraTextConverter._apply_wiki_inline_formatting(item_text)
+                
+                if not in_list or list_type != 'ul':
+                    if in_list:
+                        result_lines.append(f"</{list_type}>")
                     result_lines.append("<ul>")
                     in_list = True
-                item_text = list_match.group(2)
+                    list_type = 'ul'
+                
                 result_lines.append(f"<li>{item_text}</li>")
+                i += 1
                 continue
             
-            # Handle numbered lists
-            num_list_match = re.match(r'^# (.*)', line)
-            if num_list_match:
-                if not in_list:
+            # Handle numbered lists (#)
+            num_match = re.match(r'^(#+) (.*)', line)
+            if num_match:
+                depth = len(num_match.group(1))
+                item_text = html.escape(num_match.group(2))
+                
+                # Apply inline formatting
+                item_text = JiraTextConverter._apply_wiki_inline_formatting(item_text)
+                
+                if not in_list or list_type != 'ol':
+                    if in_list:
+                        result_lines.append(f"</{list_type}>")
                     result_lines.append("<ol>")
                     in_list = True
-                item_text = num_list_match.group(1)
+                    list_type = 'ol'
+                
                 result_lines.append(f"<li>{item_text}</li>")
+                i += 1
                 continue
             
-            # End list if we hit non-list content
-            if in_list and line.strip() and not re.match(r'^([*\-#])', line):
-                result_lines.append("</ul>" if in_list else "</ol>")
+            # End list if we hit non-list, non-empty content
+            if in_list and line.strip():
+                result_lines.append(f"</{list_type}>")
                 in_list = False
+                list_type = None
             
             # Handle blockquotes
             if line.startswith('bq. '):
-                quote_text = line[4:]
+                quote_text = html.escape(line[4:])
+                quote_text = JiraTextConverter._apply_wiki_inline_formatting(quote_text)
                 result_lines.append(f"<blockquote>{quote_text}</blockquote>")
+                i += 1
                 continue
             
-            # Handle paragraphs
+            # Handle paragraphs (non-empty lines)
             if line.strip():
                 # Apply inline formatting
-                formatted = JiraTextConverter._apply_wiki_inline_formatting(line)
+                formatted = html.escape(line)
+                formatted = JiraTextConverter._apply_wiki_inline_formatting(formatted)
                 result_lines.append(f"<p>{formatted}</p>")
             
+            i += 1
         
         # Close any open lists
         if in_list:
-            result_lines.append("</ul>" if in_list else "</ol>")
+            result_lines.append(f"</{list_type}>")
         
         # Close any open code blocks
         if code_content:
@@ -391,13 +435,15 @@ class JiraTextConverter:
         """
         import re
         
+        # Note: text should already be HTML escaped before calling this
+        
         # *text* -> <strong>text</strong>
         text = re.sub(r'\*([^*]+)\*', r'<strong>\1</strong>', text)
         
         # _text_ -> <em>text</em>
         text = re.sub(r'_([^_]+)_', r'<em>\1</em>', text)
         
-        # -text- -> <del>text</del>
+        # -text- -> <del>text</del> (but be careful with hyphens)
         text = re.sub(r'-([^-]+)-', r'<del>\1</del>', text)
         
         # {{text}} -> <code>text</code>
