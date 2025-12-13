@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Box, Card, CardContent, Typography, Button, Alert, Divider, Link } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 
 import { api } from '../services/api';
@@ -132,7 +131,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
   };
 
   const jiraUrl = getJiraUrl();
-  const displayValue = userEstimate?.is_joker ? 'J' : userEstimate?.story_points;
 
   if (error && error !== 'Not authenticated') {
     return (
@@ -194,21 +192,8 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
           </Box>
           {userEstimate && !isEditing && (
             <Box sx={{ textAlign: 'right', ml: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                <CheckCircleIcon sx={{ color: 'success.main', fontSize: '1.5rem' }} />
-                <Typography
-                  variant="h6"
-                  sx={{
-                    color: 'success.main',
-                    fontWeight: 'bold',
-                    fontSize: userEstimate.is_joker ? '1.8rem' : '1.5rem',
-                  }}
-                >
-                  {displayValue}
-                </Typography>
-              </Box>
               <Typography variant="caption" color="textSecondary">
-                {userEstimate.is_joker ? 'Joker (abstain)' : 'Your estimate'}
+                {userEstimate.is_joker ? '✓ Voted' : '✓ Estimated'}
               </Typography>
             </Box>
           )}
