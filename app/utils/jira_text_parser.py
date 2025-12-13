@@ -3,13 +3,14 @@
 import json
 import logging
 import re
-from typing import Optional, Union
+from typing import Optional, Union, Dict
 
 logger = logging.getLogger(__name__)
 
 # Track list nesting for proper indentation
 _list_depth = 0
 _list_type_stack = []  # Track ordered vs unordered lists
+_in_code_block = False  # Track if we're inside a code block
 
 
 def parse_jira_rich_text(text: Union[str, dict]) -> str:
@@ -110,9 +111,35 @@ def _get_list_prefix(list_type: str, index: int) -> str:
         return f"{indent}{index}. "
     else:
         # Use bullets for unordered lists, varying by depth
-        bullets = ['•', '◦', '▪']  # Different bullets for different depths
+        bullets = ['\u2022', '\u25e6', '\u25aa']  # Different bullets for different depths
         bullet = bullets[_list_depth % len(bullets)]
         return f"{indent}{bullet} "
+
+
+def _extract_code_block_language(attrs: Optional[dict]) -> str:
+    """
+    Extract language from code block attributes.
+    
+    Args:
+        attrs: Code block attributes dict
+        
+    Returns:
+        Language name or empty string
+    """
+    if not attrs or not isinstance(attrs, dict):
+        return ""
+    
+    # Try common attribute names
+    language = attrs.get('language', '')
+    if not language:
+        language = attrs.get('lang', '')
+    if not language:
+        language = attrs.get('class', '')
+        # Remove 'language-' prefix if present
+        if language.startswith('language-'):
+            language = language[9:]
+    
+    return language.lower() if language else ""
 
 
 def _extract_text_from_jira_doc(doc: dict) -> str:
@@ -125,17 +152,18 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
     Returns:
         Extracted plain text
     """
-    global _list_depth, _list_type_stack
+    global _list_depth, _list_type_stack, _in_code_block
     
     # Reset depth at start
     _list_depth = 0
     _list_type_stack = []
+    _in_code_block = False
     
     texts = []
     
     def extract_content(content, parent_list_type=None, item_index=0):
         """Recursively extract text from content array"""
-        global _list_depth, _list_type_stack
+        global _list_depth, _list_type_stack, _in_code_block
         
         if not isinstance(content, list):
             return
@@ -266,13 +294,28 @@ def _extract_text_from_jira_doc(doc: dict) -> str:
                     
                     texts.extend(item_texts)
             
-            # Handle code blocks
+            # Handle code blocks - ENHANCED
             elif item_type == 'codeBlock':
-                texts.append('\n```\n')
+                if texts and texts[-1] != '\n':
+                    texts.append('\n')
+                
+                # Extract language if specified
+                attrs = item.get('attrs', {})
+                language = _extract_code_block_language(attrs)
+                
+                # Add code block markers with language
+                texts.append(f'```{language}\n')
+                
+                _in_code_block = True
                 nested_content = item.get('content', [])
                 if nested_content:
                     extract_content(nested_content)
-                texts.append('\n```\n')
+                _in_code_block = False
+                
+                # Ensure newline before closing marker
+                if texts and texts[-1] != '\n':
+                    texts.append('\n')
+                texts.append('```\n')
             
             # Handle inline code
             elif item_type == 'inlineCode':
@@ -415,7 +458,7 @@ def parse_jira_description(description: Optional[str]) -> str:
         description: Description from Jira API
         
     Returns:
-        Clean plain text description with preserved formatting and lists
+        Clean plain text description with preserved formatting, lists, and code blocks
     """
     if not description:
         return ""
