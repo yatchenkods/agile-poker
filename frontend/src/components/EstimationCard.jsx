@@ -7,6 +7,222 @@ import { api } from '../services/api';
 
 const STORY_POINTS = [1, 2, 4, 8, 16];
 
+// Component to render formatted description text
+function FormattedDescription({ text }) {
+  if (!text) return null;
+
+  // Split text by lines and process each line
+  const lines = text.split('\n');
+  const elements = [];
+  let currentParagraph = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // Check for heading (# prefix)
+    if (line.startsWith('#')) {
+      // Flush current paragraph
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <Typography key={`para-${elements.length}`} variant="body2" paragraph>
+            {currentParagraph.join(' ')}
+          </Typography>
+        );
+        currentParagraph = [];
+      }
+
+      // Add heading
+      const level = line.match(/^#+/)[0].length;
+      const headingText = line.replace(/^#+\s*/, '');
+      const variantMap = {
+        1: 'h5',
+        2: 'h6',
+        3: 'subtitle1',
+        4: 'subtitle2',
+        5: 'body2',
+        6: 'body2',
+      };
+
+      elements.push(
+        <Typography
+          key={`heading-${elements.length}`}
+          variant={variantMap[level]}
+          sx={{ fontWeight: 600, mt: 1, mb: 0.5 }}
+        >
+          {headingText}
+        </Typography>
+      );
+    }
+    // Check for list item (• or 1., 2., etc.)
+    else if (line.startsWith('•') || /^\d+\.\s/.test(line)) {
+      // Flush current paragraph
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <Typography key={`para-${elements.length}`} variant="body2" paragraph>
+            {currentParagraph.join(' ')}
+          </Typography>
+        );
+        currentParagraph = [];
+      }
+
+      // Add list item
+      const itemText = line.replace(/^[•\d+\.\s]+/, '');
+      elements.push(
+        <Box key={`list-${elements.length}`} sx={{ pl: 2, mb: 0.5 }}>
+          <Typography variant="body2" component="span">
+            {line.startsWith('•') ? '• ' : ''}
+            {itemText}
+          </Typography>
+        </Box>
+      );
+    }
+    // Check for blockquote (> prefix)
+    else if (line.startsWith('>')) {
+      // Flush current paragraph
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <Typography key={`para-${elements.length}`} variant="body2" paragraph>
+            {currentParagraph.join(' ')}
+          </Typography>
+        );
+        currentParagraph = [];
+      }
+
+      // Add blockquote
+      const quoteText = line.replace(/^>\s*/, '');
+      elements.push(
+        <Typography
+          key={`quote-${elements.length}`}
+          variant="body2"
+          sx={{
+            pl: 2,
+            borderLeft: '3px solid #ccc',
+            fontStyle: 'italic',
+            color: 'textSecondary',
+            mb: 1,
+          }}
+        >
+          {quoteText}
+        </Typography>
+      );
+    }
+    // Check for code block (``` markers)
+    else if (line.startsWith('```')) {
+      // Skip code block markers, content inside will be handled
+      continue;
+    }
+    // Empty line - end of paragraph
+    else if (line === '') {
+      if (currentParagraph.length > 0) {
+        elements.push(
+          <Typography key={`para-${elements.length}`} variant="body2" paragraph>
+            {currentParagraph.join(' ')}
+          </Typography>
+        );
+        currentParagraph = [];
+      }
+    }
+    // Regular text line - add to current paragraph
+    else {
+      currentParagraph.push(line);
+    }
+  }
+
+  // Flush remaining paragraph
+  if (currentParagraph.length > 0) {
+    elements.push(
+      <Typography key={`para-${elements.length}`} variant="body2" paragraph>
+        {currentParagraph.join(' ')}
+      </Typography>
+    );
+  }
+
+  // Render inline markdown-style formatting
+  return (
+    <Box sx={{ '& *': { wordBreak: 'break-word' } }}>
+      {elements.map((element, idx) => {
+        // Apply inline formatting to Typography elements
+        if (element?.type?.name === 'Typography') {
+          return React.cloneElement(element, {
+            key: idx,
+            children: renderInlineFormatting(element.props.children),
+          });
+        }
+        return React.cloneElement(element, { key: idx });
+      })}
+    </Box>
+  );
+}
+
+// Helper function to render inline formatting (bold, italic, code)
+function renderInlineFormatting(text) {
+  if (typeof text !== 'string') return text;
+
+  const elements = [];
+  let lastIndex = 0;
+
+  // Pattern to match **bold**, *italic*, `code`, ~~strikethrough~~
+  const pattern = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|~~[^~]+~~)/g;
+  let match;
+
+  while ((match = pattern.exec(text)) !== null) {
+    // Add text before match
+    if (match.index > lastIndex) {
+      elements.push(text.substring(lastIndex, match.index));
+    }
+
+    // Process matched formatting
+    const matched = match[0];
+    if (matched.startsWith('**') && matched.endsWith('**')) {
+      // Bold
+      elements.push(
+        <strong key={`bold-${elements.length}`}>
+          {matched.slice(2, -2)}
+        </strong>
+      );
+    } else if (matched.startsWith('*') && matched.endsWith('*')) {
+      // Italic
+      elements.push(
+        <em key={`italic-${elements.length}`}>
+          {matched.slice(1, -1)}
+        </em>
+      );
+    } else if (matched.startsWith('`') && matched.endsWith('`')) {
+      // Code
+      elements.push(
+        <code
+          key={`code-${elements.length}`}
+          style={{
+            backgroundColor: '#f0f0f0',
+            padding: '2px 4px',
+            borderRadius: '3px',
+            fontFamily: 'monospace',
+            fontSize: '0.9em',
+          }}
+        >
+          {matched.slice(1, -1)}
+        </code>
+      );
+    } else if (matched.startsWith('~~') && matched.endsWith('~~')) {
+      // Strikethrough
+      elements.push(
+        <del key={`del-${elements.length}`}>
+          {matched.slice(2, -2)}
+        </del>
+      );
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    elements.push(text.substring(lastIndex));
+  }
+
+  return elements.length > 0 ? elements : text;
+}
+
 function EstimationCard({ issue, session, onEstimateSubmitted }) {
   // Track selected points only for THIS issue
   const [selectedPoints, setSelectedPoints] = useState(null);
@@ -186,9 +402,12 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
                 {issue.jira_key}: {issue.title}
               </Typography>
             )}
-            <Typography variant="body2" color="textSecondary" paragraph>
-              {issue.description}
-            </Typography>
+            {/* Render formatted description */}
+            {issue.description && (
+              <Box sx={{ my: 1.5, color: 'textSecondary' }}>
+                <FormattedDescription text={issue.description} />
+              </Box>
+            )}
           </Box>
         </Box>
 
