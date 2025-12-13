@@ -157,19 +157,6 @@ function Login({ onLogin }) {
               </Button>
             </Typography>
           </Box>
-
-          {isLogin && (
-            <Box sx={{ mt: 3, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
-              <Typography variant="caption" color="textSecondary" display="block">
-                <strong>Demo Credentials:</strong>
-              </Typography>
-              <Typography variant="caption" color="textSecondary">
-                📧 Email: admin@company.com
-                <br />
-                🔑 Password: SecurePass123
-              </Typography>
-            </Box>
-          )}
         </Card>
       </Box>
     </Container>
