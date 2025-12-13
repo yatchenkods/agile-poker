@@ -12,11 +12,15 @@ _list_depth = 0
 _list_type_stack = []  # Track ordered vs unordered lists
 _in_code_block = False  # Track if we're inside a code block
 
+# Pattern for old Jira code format: {code:language}...{code}
+OLD_JIRA_CODE_PATTERN = re.compile(r'\{code(?::([^}]*))?\}(.*?)\{code\}', re.DOTALL)
+
 
 def parse_jira_rich_text(text: Union[str, dict]) -> str:
     """
     Parse Jira Document Format (Rich Text) to plain text.
     Handles both JSON strings and dict objects.
+    Also handles old Jira macro format: {code:language}...{code}
     
     Jira Document Format example:
     {
@@ -34,6 +38,11 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
         ]
     }
     
+    Old Jira macro format:
+    {code:java}
+System.out.println("Hello");
+    {code}
+    
     Args:
         text: Jira rich text as JSON string or dict
         
@@ -49,13 +58,17 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
             # First check if it looks like JSON
             text = text.strip()
             if not text.startswith('{'):
-                # Not JSON, check if it contains URLs and format them
+                # Not JSON, might be old Jira format or plain text
+                # Convert old Jira code format to markdown
+                text = _convert_old_jira_code_blocks(text)
                 return _format_plain_text_with_urls(text)
             
             try:
                 data = json.loads(text)
             except json.JSONDecodeError:
-                logger.debug("Failed to parse text as JSON, returning as-is: %s", text[:50])
+                logger.debug("Failed to parse text as JSON, might be old format: %s", text[:50])
+                # Try old Jira format
+                text = _convert_old_jira_code_blocks(text)
                 return _format_plain_text_with_urls(text)
         else:
             data = text
@@ -71,6 +84,31 @@ def parse_jira_rich_text(text: Union[str, dict]) -> str:
         logger.warning("Error parsing Jira rich text: %s", e)
         # Fallback: return original text
         return str(text) if isinstance(text, dict) else text
+
+
+def _convert_old_jira_code_blocks(text: str) -> str:
+    """
+    Convert old Jira macro format {code:language}...{code} to markdown ```language...```
+    
+    Args:
+        text: Text potentially containing old Jira code blocks
+        
+    Returns:
+        Text with converted code blocks
+    """
+    if not text or '{code' not in text:
+        return text
+    
+    def replace_code_block(match):
+        language = match.group(1) or ''
+        code_content = match.group(2)
+        # Trim code content
+        code_content = code_content.strip()
+        return f'```{language}\n{code_content}\n```'
+    
+    # Replace all {code:language}...{code} patterns
+    result = OLD_JIRA_CODE_PATTERN.sub(replace_code_block, text)
+    return result
 
 
 def _format_plain_text_with_urls(text: str) -> str:
@@ -453,6 +491,7 @@ def _apply_text_formatting(text: str, marks: list) -> str:
 def parse_jira_description(description: Optional[str]) -> str:
     """
     Parse Jira description field (handles both rich text and plain text).
+    Also handles old Jira macro format {code:language}...{code}
     
     Args:
         description: Description from Jira API
@@ -463,7 +502,7 @@ def parse_jira_description(description: Optional[str]) -> str:
     if not description:
         return ""
     
-    # Try to parse as Jira rich text
+    # Try to parse as Jira rich text (also handles old format)
     result = parse_jira_rich_text(description)
     
     # Fallback: if parsing returned empty or looks wrong, return original
