@@ -14,7 +14,7 @@ We inject a `config.js` file at **runtime** (container startup) with all configu
 
 ### How It Works
 
-1. **Helm initContainer** generates `/usr/share/nginx/html/config.js` with values from `values.yaml`
+1. **Helm initContainer** generates `/app/build/config.js` with values from `values.yaml`
 2. **React HTML** includes this script: `<script src="/config.js"></script>`
 3. **React app** reads config from `window.__RUNTIME_CONFIG__`
 
@@ -105,6 +105,39 @@ const MyComponent = () => {
 };
 ```
 
+## How It Works in Kubernetes
+
+### Step-by-step process:
+
+1. **Pod starts** - Kubernetes creates frontend pod
+2. **initContainer runs** - Before main container, initContainer executes:
+   ```bash
+   cat > /app/build/config.js << 'EOF'
+   window.__RUNTIME_CONFIG__ = {
+     REACT_APP_API_URL: '{{ values from Helm }}',
+     REACT_APP_LOG_LEVEL: '...',
+     REACT_APP_JIRA_ENABLED: '...'
+   };
+   EOF
+   ```
+3. **Volume shared** - Both initContainer and main container share `/app/build` volume
+4. **Application starts** - Main container starts and serves files including generated `config.js`
+5. **Browser loads HTML** - React HTML includes `<script src="/config.js"></script>`
+6. **Config loaded** - JavaScript runs and `window.__RUNTIME_CONFIG__` is available
+7. **App reads config** - React app reads from `window.__RUNTIME_CONFIG__`
+
+### Volume setup:
+
+```yaml
+volumes:
+  - name: app-build
+    emptyDir: {}  # Temporary volume shared between initContainer and main container
+
+volumeMounts:
+  - name: app-build
+    mountPath: /app/build
+```
+
 ## Deployment
 
 ### Development
@@ -144,6 +177,7 @@ window.__RUNTIME_CONFIG__ = {
 ✅ **No secrets in image** - All sensitive data injected at runtime  
 ✅ **Environment-specific** - Different values for dev/staging/prod  
 ✅ **Easy to debug** - Open DevTools → check `window.__RUNTIME_CONFIG__`
+✅ **No nginx rebuild** - Works with any Node.js or static server  
 
 ## Troubleshooting
 
@@ -158,6 +192,7 @@ If undefined, ensure:
 1. `config.js` is served (check Network tab)
 2. Script tag is in `public/index.html`
 3. Script loads **before** React app initialization
+4. `/app/build` directory exists in your container
 
 ### Check generated config
 
@@ -165,22 +200,86 @@ If undefined, ensure:
 # Port-forward to frontend
 kubectl port-forward svc/agile-poker-frontend 3000:3000
 
-# View config.js
+# View config.js in browser
+# https://localhost:3000/config.js
+
+# Or via curl
 curl http://localhost:3000/config.js
+```
+
+### Check pod logs
+
+```bash
+# View initContainer logs
+kubectl logs -f deployment/agile-poker-frontend -c config-init
+
+# View main container logs
+kubectl logs -f deployment/agile-poker-frontend -c frontend
+```
+
+### Verify config.js was written
+
+```bash
+# Exec into running pod
+kubectl exec -it deployment/agile-poker-frontend -- sh
+
+# Check if file exists
+cat /app/build/config.js
 ```
 
 ## Adding New Config Variables
 
-1. Add to `helm/values.yaml`:
+### 1. Add to `helm/values.yaml`:
 ```yaml
 frontend:
   env:
     REACT_APP_MY_VAR: "my-value"
 ```
 
-2. Update `frontend-deployment.yaml` initContainer script
+### 2. Update `helm/templates/frontend-deployment.yaml` initContainer script:
 
-3. Read in React:
+Add to the `cat > /app/build/config.js` section:
+```bash
+REACT_APP_MY_VAR: '{{ .Values.frontend.env.REACT_APP_MY_VAR }}',
+```
+
+### 3. Read in React:
 ```javascript
 const myVar = window.__RUNTIME_CONFIG__.REACT_APP_MY_VAR;
+```
+
+## Docker Image Requirements
+
+Your frontend Docker image should:
+- ✅ Use `/app/build` directory for React build files (or configure volume mount)
+- ✅ Have a web server (nginx, Node.js, etc.) serving static files
+- ✅ Support serving files from `/app/build/` or mount point
+
+### Example Dockerfile:
+
+```dockerfile
+FROM node:18 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/build /app/build
+COPY nginx.conf /etc/nginx/nginx.conf
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+### Example nginx.conf:
+
+```nginx
+server {
+    listen 3000;
+    location / {
+        root /app/build;
+        try_files $uri /index.html;
+    }
+}
 ```
