@@ -33,9 +33,23 @@ spec:
             pathType: {{ .pathType }}
             backend:
               service:
-                name: {{ include "agile-poker.fullname" $ }}
+                name: |
+                  {{- if eq .path "/api" }}
+                  {{ include "agile-poker.fullname" $ }}
+                  {{- else if .Values.frontend.enabled }}
+                  {{ include "agile-poker.fullname" $ }}-frontend
+                  {{- else }}
+                  {{ include "agile-poker.fullname" $ }}
+                  {{- end }}
                 port:
-                  number: {{ $.Values.service.port }}
+                  number: |
+                    {{- if eq .path "/api" }}
+                    {{ $.Values.service.port }}
+                    {{- else if .Values.frontend.enabled }}
+                    {{ $.Values.frontend.service.port }}
+                    {{- else }}
+                    {{ $.Values.service.port }}
+                    {{- end }}
           {{- end }}
     {{- end }}
 {{- end }}
