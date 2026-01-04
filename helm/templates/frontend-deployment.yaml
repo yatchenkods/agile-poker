@@ -34,7 +34,7 @@ spec:
           - sh
           - -c
           - |
-            cat > /usr/share/nginx/html/config.js << 'EOF'
+            cat > /app/build/config.js << 'EOF'
             window.__RUNTIME_CONFIG__ = {
               REACT_APP_API_URL: '{{ .Values.frontend.env.REACT_APP_API_URL }}',
               REACT_APP_LOG_LEVEL: '{{ .Values.frontend.env.REACT_APP_LOG_LEVEL }}',
@@ -42,8 +42,8 @@ spec:
             };
             EOF
         volumeMounts:
-        - name: html-volume
-          mountPath: /usr/share/nginx/html
+        - name: app-build
+          mountPath: /app/build
       containers:
       - name: frontend
         {{- with .Values.securityContext }}
@@ -84,13 +84,13 @@ spec:
           {{- toYaml . | nindent 12 }}
         {{- end }}
         volumeMounts:
-        - name: html-volume
-          mountPath: /usr/share/nginx/html
+        - name: app-build
+          mountPath: /app/build
         {{- with .Values.volumeMounts }}
           {{- toYaml . | nindent 12 }}
         {{- end }}
       volumes:
-      - name: html-volume
+      - name: app-build
         emptyDir: {}
       {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
