@@ -74,7 +74,9 @@ frontend:
     timeoutSeconds: 5
     failureThreshold: 3
   env:
-    REACT_APP_API_URL: "http://localhost:8000/api"
+    # Use Kubernetes DNS for internal communication
+    # Format: http://service-name:port
+    REACT_APP_API_URL: "http://agile-poker:8000/api"
     REACT_APP_LOG_LEVEL: "debug"
     REACT_APP_JIRA_ENABLED: "true"
 
