@@ -44,9 +44,13 @@ spec:
           - /app/init/init.sh
         # Pass the original Docker CMD/ENTRYPOINT to init script via args
         # This allows init.sh to: generate config.js, then exec "$@" to run the original command
+        # Using 'serve' package to serve static React build
         args:
-          - npm
-          - start
+          - serve
+          - "-s"
+          - build
+          - "-l"
+          - "3000"
         {{- if .Values.frontend.healthCheck.enabled }}
         livenessProbe:
           httpGet:
