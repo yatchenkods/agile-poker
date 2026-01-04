@@ -22,6 +22,7 @@ data:
     
     echo "[$(date)] Config generated at /app/build/config.js"
     
-    # Execute the original Docker entrypoint/command
+    # Execute the original Docker entrypoint/command that was passed as args
+    # Use exec to replace this process with the app process
     exec "$@"
 {{- end }}
