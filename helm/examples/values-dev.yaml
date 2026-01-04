@@ -81,7 +81,7 @@ frontend:
     REACT_APP_JIRA_ENABLED: "true"
 
 env:
-  LOG_LEVEL: "debug"
+  LOG_LEVEL: "DEBUG"
   WORKERS: "1"
   DATABASE_POOL_SIZE: "5"
   CORS_ORIGINS: "*"
