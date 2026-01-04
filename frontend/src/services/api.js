@@ -1,10 +1,17 @@
 import axios from 'axios';
+import { config } from '../config.ts';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+// Use runtime config that supports environment variable override
+const API_URL = config.apiUrl;
 
 const api = axios.create({
   baseURL: `${API_URL}/api/v1`,
 });
+
+// Log API configuration in debug mode
+if (config.logLevel === 'debug' || config.logLevel === 'trace') {
+  console.log('[API] Initialized with base URL:', api.defaults.baseURL);
+}
 
 // Add token to requests
 api.interceptors.request.use((config) => {

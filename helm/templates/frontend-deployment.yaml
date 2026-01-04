@@ -38,23 +38,20 @@ spec:
         - name: http
           containerPort: {{ .Values.frontend.service.targetPort }}
           protocol: TCP
-        # Use init script from ConfigMap to generate config.js before starting app
-        # The init script will receive the original entrypoint as args
-        command:
-          - /app/init/init.sh
-        # Pass the original Docker CMD/ENTRYPOINT to init script via args
-        # This allows init.sh to: generate config.js, then exec "$@" to run the original command
-        # Using 'serve' package to serve static React build
-        args:
-          - serve
-          - "-s"
-          - build
-          - "-l"
-          - "3000"
+        # Runtime configuration injection
+        # The container entrypoint.sh will:
+        # 1. Read REACT_APP_* environment variables
+        # 2. Generate config.js with runtime values
+        # 3. Start Nginx to serve the app
+        env:
+        {{- range $key, $value := .Values.frontend.env }}
+        - name: {{ $key }}
+          value: "{{ $value }}"
+        {{- end }}
         {{- if .Values.frontend.healthCheck.enabled }}
         livenessProbe:
           httpGet:
-            path: /
+            path: /health
             port: http
           initialDelaySeconds: {{ .Values.frontend.healthCheck.initialDelaySeconds }}
           periodSeconds: {{ .Values.frontend.healthCheck.periodSeconds }}
@@ -62,37 +59,23 @@ spec:
           failureThreshold: {{ .Values.frontend.healthCheck.failureThreshold }}
         readinessProbe:
           httpGet:
-            path: /
+            path: /health
             port: http
           initialDelaySeconds: {{ .Values.frontend.healthCheck.initialDelaySeconds }}
           periodSeconds: {{ .Values.frontend.healthCheck.periodSeconds }}
           timeoutSeconds: {{ .Values.frontend.healthCheck.timeoutSeconds }}
           failureThreshold: {{ .Values.frontend.healthCheck.failureThreshold }}
         {{- end }}
-        env:
-        {{- range $key, $value := .Values.frontend.env }}
-        - name: {{ $key }}
-          value: "{{ $value }}"
-        {{- end }}
         {{- with .Values.frontend.resources }}
         resources:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-        volumeMounts:
-        # Mount init script from ConfigMap
-        - name: init-script
-          mountPath: /app/init
-          readOnly: true
         {{- with .Values.volumeMounts }}
+        volumeMounts:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-      volumes:
-      # ConfigMap with initialization script
-      - name: init-script
-        configMap:
-          name: {{ include "agile-poker.fullname" . }}-frontend-init
-          defaultMode: 0755
       {{- with .Values.volumes }}
+      volumes:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.nodeSelector }}

@@ -65,9 +65,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    # Runtime environment variables for API configuration
+    # These can be overridden at container startup:
+    # docker run -e REACT_APP_API_URL=https://api.example.com ...
     environment:
+      # API endpoint URL
       REACT_APP_API_URL: ${API_URL:-http://localhost:8000}
+      # WebSocket endpoint URL (use wss:// for production with SSL)
       REACT_APP_WS_URL: ${WS_URL:-ws://localhost:8000}
+      # Enable/disable Jira integration
+      REACT_APP_JIRA_ENABLED: ${JIRA_ENABLED:-false}
+      # Log level: debug, info, warn, error
+      REACT_APP_LOG_LEVEL: ${LOG_LEVEL:-info}
     ports:
       - "3000:3000"
     depends_on:
@@ -75,6 +84,12 @@ services:
     restart: always
     networks:
       - agile-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   postgres_prod_data:
