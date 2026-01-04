@@ -1,0 +1,10 @@
+# Helm chart dependencies for agile-poker
+# This chart can use PostgreSQL from Bitnami Helm charts repository
+# To add dependencies, use: helm repo add bitnami https://charts.bitnami.com/bitnami
+
+dependencies:
+  - name: postgresql
+    version: "11.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+    alias: postgresql
