@@ -58,6 +58,26 @@ postgresql:
       size: 10Gi
       storageClassName: "standard"
 
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis_password_123"  # Change this in production!
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClassName: "standard"
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClassName: "standard"
+  metrics:
+    enabled: true
+
 # Environment variables for the application
 env:
   LOG_LEVEL: "info"
@@ -69,11 +89,14 @@ env:
   JWT_EXPIRATION_HOURS: "24"
   JIRA_ENABLED: "true"
   SESSION_TIMEOUT_MINUTES: "30"
+  REDIS_ENABLED: "true"
+  REDIS_MAX_CONNECTIONS: "50"
 
 # Secrets (mount as environment variables)
 secrets:
   jiraApiToken: ""  # Set your Jira API token
   databasePassword: "changeme123"  # Should match postgresql.auth.password
+  redisPassword: "redis_password_123"  # Should match redis.auth.password
 
 # Health check configuration
 healthCheck:
