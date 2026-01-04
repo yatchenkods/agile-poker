@@ -39,7 +39,7 @@ helm install agile-poker ./helm
 **С кастомными значениями:**
 
 ```bash
-helm install agile-poker ./helm -f values-prod.yaml
+helm install agile-poker ./helm -f helm/examples/values-production.yaml
 ```
 
 ### 4. Проверьте развертывание
@@ -48,6 +48,66 @@ helm install agile-poker ./helm -f values-prod.yaml
 kubectl get pods -l app.kubernetes.io/name=agile-poker
 kubectl describe pod <pod-name>
 kubectl logs <pod-name>
+```
+
+## Runtime Configuration
+
+Frontend приложение использует **runtime configuration** для API endpoints и других параметров.
+
+Это позволяет использовать **один Docker image** для разных окружений (dev, staging, production).
+
+### Frontend Runtime Variables
+
+Все переменные указываются в `frontend.env` секции values.yaml:
+
+```yaml
+frontend:
+  env:
+    # API endpoint - must be accessible from the browser
+    REACT_APP_API_URL: "https://api.example.com"
+    # WebSocket endpoint for real-time updates (use wss:// for SSL)
+    REACT_APP_WS_URL: "wss://api.example.com"
+    # Enable/disable Jira integration
+    REACT_APP_JIRA_ENABLED: "false"
+    # Logging level: debug, info, warn, error
+    REACT_APP_LOG_LEVEL: "info"
+```
+
+### Как это работает
+
+1. **Container startup** - Kubernetes передает env переменные в контейнер
+2. **entrypoint.sh** - На старте контейнера:
+   - Читает `REACT_APP_*` переменные
+   - Генерирует `config.js` с runtime значениями
+   - Инжектирует `window.__RUNTIME_CONFIG__` в браузер
+3. **React app** - Использует `window.__RUNTIME_CONFIG__` для API endpoints
+4. **API requests** - Все запросы используют актуальные runtime значения
+
+### Примеры использования
+
+**Development:**
+
+```bash
+helm install agile-poker ./helm \
+  --set frontend.env.REACT_APP_API_URL="http://localhost:8000" \
+  --set frontend.env.REACT_APP_WS_URL="ws://localhost:8000" \
+  --set frontend.env.REACT_APP_LOG_LEVEL="debug"
+```
+
+**Production:**
+
+```bash
+helm install agile-poker ./helm \
+  --set frontend.env.REACT_APP_API_URL="https://api.agile-poker.com" \
+  --set frontend.env.REACT_APP_WS_URL="wss://api.agile-poker.com" \
+  --set frontend.env.REACT_APP_JIRA_ENABLED="true" \
+  --set frontend.env.REACT_APP_LOG_LEVEL="info"
+```
+
+**С values файлом:**
+
+```bash
+helm install agile-poker ./helm -f helm/examples/values-production.yaml
 ```
 
 ## Конфигурация
@@ -68,6 +128,14 @@ image:
 service:
   type: ClusterIP
   port: 8000
+
+# Frontend runtime конфигурация
+frontend:
+  env:
+    REACT_APP_API_URL: "https://api.example.com"
+    REACT_APP_WS_URL: "wss://api.example.com"
+    REACT_APP_JIRA_ENABLED: "false"
+    REACT_APP_LOG_LEVEL: "info"
 
 # Настройки Ingress
 ingress:
@@ -125,68 +193,61 @@ redis:
 
 Для production окружения обязательно настройте следующие параметры:
 
-### 1. Измените пароли
+### 1. Используйте production values файл
 
-```yaml
-postgresql:
-  auth:
-    password: "your-strong-password-here"
-redis:
-  auth:
-    password: "your-strong-password-here"
-secrets:
-  databasePassword: "your-strong-password-here"
-  redisPassword: "your-strong-password-here"
-  jiraApiToken: "your-jira-token"
+```bash
+helm install agile-poker ./helm -f helm/examples/values-production.yaml
 ```
 
-### 2. Измените JWT секрет
+### 2. Измените пароли
 
-```yaml
-env:
-  JWT_SECRET: "your-secure-random-secret"
+```bash
+helm install agile-poker ./helm \
+  --set postgresql.auth.password="your-strong-password" \
+  --set redis.auth.password="your-strong-password" \
+  --set secrets.databasePassword="your-strong-password" \
+  --set secrets.redisPassword="your-strong-password"
 ```
 
-### 3. Настройте Ingress
+### 3. Измените JWT секрет
 
-```yaml
-ingress:
-  enabled: true
-  hosts:
-    - host: agile-poker.yourdomain.com
-  tls:
-    - secretName: agile-poker-tls
-      hosts:
-        - agile-poker.yourdomain.com
+```bash
+helm install agile-poker ./helm \
+  --set env.JWT_SECRET="your-secure-random-secret-256-bits"
 ```
 
-### 4. Оптимизируйте лимиты ресурсов
+### 4. Настройте Frontend endpoints
 
-```yaml
-resources:
-  limits:
-    cpu: 1000m
-    memory: 1Gi
-  requests:
-    cpu: 500m
-    memory: 512Mi
+```bash
+helm install agile-poker ./helm \
+  --set frontend.env.REACT_APP_API_URL="https://api.yourdomain.com" \
+  --set frontend.env.REACT_APP_WS_URL="wss://api.yourdomain.com"
 ```
 
-### 5. Включите автомасштабирование
+### 5. Оптимизируйте лимиты ресурсов
 
-```yaml
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 80
+```bash
+helm install agile-poker ./helm \
+  --set resources.limits.cpu="1000m" \
+  --set resources.limits.memory="1Gi" \
+  --set resources.requests.cpu="500m" \
+  --set resources.requests.memory="512Mi"
+```
+
+### 6. Включите автомасштабирование
+
+```bash
+helm install agile-poker ./helm \
+  --set autoscaling.enabled=true \
+  --set autoscaling.minReplicas=3 \
+  --set autoscaling.maxReplicas=10
 ```
 
 ## Обновление
 
 ```bash
 # Обновить чарт
-helm upgrade agile-poker ./helm -f values-prod.yaml
+helm upgrade agile-poker ./helm -f helm/examples/values-production.yaml
 
 # Откатить к предыдущей версии
 helm rollback agile-poker 1
@@ -199,6 +260,19 @@ helm uninstall agile-poker
 ```
 
 ## Устранение неполадок
+
+### Проверка Frontend Runtime Configuration
+
+```bash
+# Проверить что env переменные переданы
+kubectl describe pod <frontend-pod-name> | grep REACT_APP
+
+# Проверить что config.js был сгенерирован
+kubectl exec -it <frontend-pod-name> -- cat /usr/share/nginx/html/config.js
+
+# Проверить network requests в браузере
+# DevTools -> Network tab -> просмотреть API endpoint
+```
 
 ### Поды не запускаются
 
@@ -243,6 +317,9 @@ helm lint ./helm
 
 # Детальная отладка (dry-run)
 helm install agile-poker ./helm --debug --dry-run
+
+# Просмотр конкретных значений
+helm template agile-poker ./helm -s frontend.env
 ```
 
 ## Примеры использования
@@ -250,13 +327,15 @@ helm install agile-poker ./helm --debug --dry-run
 ### Установка для разработки
 
 ```bash
-helm install agile-poker ./helm -f helm/examples/values-dev.yaml
+helm install agile-poker ./helm \
+  --set frontend.env.REACT_APP_API_URL="http://localhost:8000" \
+  --set frontend.env.REACT_APP_LOG_LEVEL="debug"
 ```
 
 ### Установка для production
 
 ```bash
-helm install agile-poker ./helm -f helm/examples/values-prod.yaml
+helm install agile-poker ./helm -f helm/examples/values-production.yaml
 ```
 
 ### Использование внешней базы данных
@@ -274,7 +353,8 @@ helm install agile-poker ./helm \
 
 ```bash
 helm install agile-poker ./helm \
-  --set secrets.jiraApiToken="your-jira-api-token"
+  --set secrets.jiraApiToken="your-jira-api-token" \
+  --set frontend.env.REACT_APP_JIRA_ENABLED="true"
 ```
 
 ## Мониторинг и логирование
@@ -298,6 +378,9 @@ kubectl logs -f -l app.kubernetes.io/name=agile-poker
 
 # Логи предыдущего контейнера (если был перезапуск)
 kubectl logs -p deployment/agile-poker
+
+# Логи frontend
+kubectl logs -f deployment/agile-poker-frontend
 ```
 
 ## Безопасность
@@ -310,6 +393,7 @@ kubectl logs -p deployment/agile-poker
 4. **Включите Pod Security Standards**
 5. **Регулярно обновляйте образы** и зависимости
 6. **Настройте RBAC** для ограничения доступа
+7. **Используйте HTTPS/WSS** для всех endpoints в production
 
 ## Поддержка
 
@@ -321,6 +405,7 @@ https://github.com/yatchenkods/agile-poker/issues
 
 - [Детальная инструкция по установке](./INSTALL.md)
 - [Примеры конфигураций](./examples/)
+- [Runtime Configuration Documentation](../RUNTIME_CONFIG.md)
 - [Документация Kubernetes](https://kubernetes.io/docs/)
 - [Документация Helm](https://helm.sh/docs/)
 - [Bitnami PostgreSQL Chart](https://github.com/bitnami/charts/tree/main/bitnami/postgresql)
