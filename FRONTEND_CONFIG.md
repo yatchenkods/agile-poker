@@ -10,14 +10,15 @@ React environment variables (`REACT_APP_*`) are baked into the JavaScript bundle
 
 ## Solution
 
-We inject a `config.js` file at **runtime** (container startup) with all configuration values using Kubernetes **postStart lifecycle hook**.
+We inject a `config.js` file at **runtime** (before application startup) with all configuration values using Kubernetes container command override.
 
 ### How It Works
 
-1. **Container starts** - Frontend container initializes with all files in `/app/build`
-2. **postStart hook runs** - Kubernetes postStart hook generates `/app/build/config.js` from Helm values
-3. **React HTML** includes this script: `<script src="/config.js"></script>`
-4. **React app** reads config from `window.__RUNTIME_CONFIG__`
+1. **Container starts** - Kubernetes launches frontend container
+2. **Config generated** - Container command generates `/app/build/config.js` BEFORE the app starts
+3. **Application starts** - Web server starts and serves all files including `config.js`
+4. **React HTML** includes this script: `<script src="/config.js"></script>`
+5. **React app** reads config from `window.__RUNTIME_CONFIG__`
 
 ### Generated config.js
 
@@ -111,8 +112,8 @@ const MyComponent = () => {
 ### Step-by-step process:
 
 1. **Pod starts** - Kubernetes creates frontend pod
-2. **Container initializes** - Container starts, `/app/build` contains all React build files
-3. **postStart hook runs** - AFTER container starts, postStart lifecycle hook executes:
+2. **Container initializes** - Container starts with command override
+3. **Config generated FIRST** - Before app starts, script creates config.js:
    ```bash
    cat > /app/build/config.js << 'EOF'
    window.__RUNTIME_CONFIG__ = {
@@ -122,39 +123,48 @@ const MyComponent = () => {
    };
    EOF
    ```
-4. **Config file added** - `config.js` is added to existing `/app/build` directory (doesn't replace it)
-5. **Application running** - Web server serves all files including generated `config.js`
+4. **Application starts** - After config.js created, main app command executes (e.g., `npm start`)
+5. **Web server running** - Serves all files from `/app/build` including `config.js`
 6. **Browser loads HTML** - React HTML includes `<script src="/config.js"></script>`
 7. **Config loaded** - JavaScript runs and `window.__RUNTIME_CONFIG__` is available
 8. **App reads config** - React app reads from `window.__RUNTIME_CONFIG__`
 
-### postStart Hook in Deployment:
+### Container Command in Deployment:
 
 ```yaml
-lifecycle:
-  postStart:
-    exec:
-      command:
-        - sh
-        - -c
-        - |
-          cat > /app/build/config.js << 'EOF'
-          window.__RUNTIME_CONFIG__ = {
-            REACT_APP_API_URL: '{{ .Values.frontend.env.REACT_APP_API_URL }}',
-            REACT_APP_LOG_LEVEL: '{{ .Values.frontend.env.REACT_APP_LOG_LEVEL }}',
-            REACT_APP_JIRA_ENABLED: '{{ .Values.frontend.env.REACT_APP_JIRA_ENABLED }}'
-          };
-          EOF
+containers:
+  - name: frontend
+    image: "..."
+    # Override container command to generate config BEFORE starting app
+    command:
+      - sh
+      - -c
+      - |
+        # Create config.js
+        cat > /app/build/config.js << 'EOF'
+        window.__RUNTIME_CONFIG__ = {
+          REACT_APP_API_URL: '{{ .Values.frontend.env.REACT_APP_API_URL }}',
+          REACT_APP_LOG_LEVEL: '{{ .Values.frontend.env.REACT_APP_LOG_LEVEL }}',
+          REACT_APP_JIRA_ENABLED: '{{ .Values.frontend.env.REACT_APP_JIRA_ENABLED }}'
+        };
+        EOF
+        echo "Config generated successfully"
+        
+        # Then start the application
+        exec "$@"
+    args:
+      - npm
+      - start
 ```
 
-### Benefits of postStart vs initContainer:
+### Why this approach?
 
-| Aspect | postStart | initContainer |
-|--------|-----------|---------------|
-| **Container files** | ✅ Preserved | ❌ Replaced by emptyDir |
-| **Execution time** | After container start | Before container start |
-| **Use case** | Add config to existing files | Initialize from scratch |
-| **Our usage** | ✅ Adds config.js to /app/build | ❌ Would replace /app/build |
+| Aspect | Container Command | postStart Hook | initContainer |
+|--------|------------------|----------------|---------------|
+| **Timing** | Before app starts | After app starts (async) | Before container |
+| **Files preserved** | ✅ Yes | ✅ Yes | ❌ No (needs emptyDir) |
+| **Reliability** | ✅ Guaranteed | ❌ Race condition | ✅ Works |
+| **Our choice** | ✅ SELECTED | ❌ Not reliable | ❌ Overwrites /app/build |
 
 ## Deployment
 
@@ -196,65 +206,70 @@ window.__RUNTIME_CONFIG__ = {
 ✅ **Environment-specific** - Different values for dev/staging/prod  
 ✅ **Easy to debug** - Open DevTools → check `window.__RUNTIME_CONFIG__`
 ✅ **Preserves build files** - All React build files are kept intact  
+✅ **Guaranteed execution** - Config created before app starts  
 ✅ **Works with any server** - nginx, Node.js, Apache, etc.  
 
 ## Troubleshooting
 
-### Config not loading?
+### Config not loading in browser?
 
-Check browser console:
+**Step 1: Check browser console**
 ```javascript
 console.log(window.__RUNTIME_CONFIG__);
 ```
 
-If undefined, ensure:
-1. `config.js` is served (check Network tab)
-2. Script tag is in `public/index.html`
-3. Script loads **before** React app initialization
-4. `/app/build` directory exists in your container
+If undefined, check Network tab:
+- Does `config.js` appear in requests?
+- What's the HTTP status (200, 404, etc.)?
 
-### Check generated config
-
+**Step 2: Check pod logs**
 ```bash
-# Port-forward to frontend
-kubectl port-forward svc/agile-poker-frontend 3000:3000
-
-# View config.js in browser
-# https://localhost:3000/config.js
-
-# Or via curl
-curl http://localhost:3000/config.js
-```
-
-### Check pod logs
-
-```bash
-# View main container logs
 kubectl logs -f deployment/agile-poker-frontend -c frontend
 
-# Check for postStart hook errors
-kubectl describe pod <pod-name>
-# Look for 'postStart' events
+# Look for output like:
+# Config generated successfully
 ```
 
-### Verify config.js was written
-
+**Step 3: Verify file was created**
 ```bash
 # Exec into running pod
 kubectl exec -it deployment/agile-poker-frontend -- sh
 
-# Check if file exists and has correct content
+# Check if file exists and has content
 cat /app/build/config.js
+
+# Check all files in build directory
+ls -la /app/build/
 ```
 
-### Check container file structure
-
+**Step 4: Check HTTP endpoint directly**
 ```bash
-# List all files in /app/build
-kubectl exec deployment/agile-poker-frontend -- ls -la /app/build/
+# Port-forward
+kubectl port-forward svc/agile-poker-frontend 3000:3000
 
-# Should show your React build files PLUS config.js
+# Test in separate terminal
+curl http://localhost:3000/config.js
+
+# Should return the JavaScript config object
 ```
+
+### Common Issues
+
+**Issue: 404 Not Found for config.js**
+- Check that `/app/build` directory exists in Docker image
+- Verify web server is configured to serve from `/app/build`
+- Check file permissions: `ls -la /app/build/config.js`
+
+**Issue: config.js is empty or malformed**
+- Check for syntax errors in Helm templates
+- Verify all variables are properly quoted
+- Check pod logs for script execution errors
+
+**Issue: HTML loads but config.js doesn't download**
+- Check browser Network tab for actual request
+- Verify script tag in public/index.html
+- Check Content-Type header (should be `application/javascript`)
+- Check CORS if frontend and backend on different origins
 
 ## Adding New Config Variables
 
@@ -265,9 +280,9 @@ frontend:
     REACT_APP_MY_VAR: "my-value"
 ```
 
-### 2. Update `helm/templates/frontend-deployment.yaml` postStart hook:
+### 2. Update `helm/templates/frontend-deployment.yaml` command:
 
-Add to the `cat > /app/build/config.js` section:
+Add to the config.js generation section:
 ```bash
 REACT_APP_MY_VAR: '{{ .Values.frontend.env.REACT_APP_MY_VAR }}',
 ```
@@ -282,9 +297,10 @@ const myVar = window.__RUNTIME_CONFIG__.REACT_APP_MY_VAR;
 Your frontend Docker image should:
 - ✅ Have build output in `/app/build` directory
 - ✅ Have a web server serving static files from `/app/build/`
-- ✅ Have `/app/build` directory accessible and writable for config.js generation
+- ✅ Have `/app/build` directory accessible and writable for config.js creation
+- ✅ Default command should be the app startup command (e.g., `npm start`, `serve -s build`)
 
-### Example Dockerfile:
+### Example Dockerfile with npm:
 
 ```dockerfile
 FROM node:18 AS builder
@@ -299,10 +315,11 @@ WORKDIR /app
 COPY --from=builder /app/build ./build
 RUN npm install -g serve
 EXPOSE 3000
+# Default command will be overridden by Helm, but set a sensible default
 CMD ["serve", "-s", "build", "-l", "3000"]
 ```
 
-Or with nginx:
+### Example Dockerfile with nginx:
 
 ```dockerfile
 FROM node:18 AS builder
@@ -327,13 +344,34 @@ server {
     listen 3000;
     root /app/build;
     
+    # Allow serving all static files
     location / {
         try_files $uri $uri/ /index.html;
     }
     
-    # Allow serving config.js
+    # Explicitly allow config.js
     location = /config.js {
         try_files $uri =404;
+        add_header Content-Type application/javascript;
     }
+    
+    # Gzip compress responses
+    gzip on;
+    gzip_types text/javascript application/javascript application/json text/css;
 }
+```
+
+## Debugging Command Execution
+
+To debug if the command is running correctly:
+
+```bash
+# View container spec to verify command override
+kubectl get pod <pod-name> -o yaml | grep -A 20 "command:"
+
+# Check if config.js was created
+kubectl exec <pod-name> -- cat /app/build/config.js
+
+# Check application startup logs
+kubectl logs <pod-name> --tail=50
 ```
