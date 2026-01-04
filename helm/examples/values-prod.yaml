@@ -1,0 +1,96 @@
+# Production environment values for agile-poker
+# Usage: helm install agile-poker ./helm -f helm/examples/values-prod.yaml
+# WARNING: Update all secrets and credentials before deploying!
+
+replicaCount: 3
+
+image:
+  repository: yatchenkods/agile-poker
+  tag: "v1.0.0"  # Use specific version tag in production
+  pullPolicy: IfNotPresent
+
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+  hosts:
+    - host: agile-poker.yourdomain.com  # Change to your domain
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: agile-poker-tls
+      hosts:
+        - agile-poker.yourdomain.com  # Change to your domain
+
+postgresql:
+  enabled: true
+  auth:
+    username: agile_prod_user  # Change this
+    password: "your-very-secure-password-here"  # MUST change this!
+    database: agile_poker_prod
+  primary:
+    persistence:
+      enabled: true
+      size: 50Gi
+      storageClassName: "fast-ssd"  # Change based on your cluster
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 2Gi
+      requests:
+        cpu: 500m
+        memory: 1Gi
+
+env:
+  LOG_LEVEL: "info"
+  WORKERS: "4"
+  DATABASE_POOL_SIZE: "20"
+  CORS_ORIGINS: "https://agile-poker.yourdomain.com"
+  JWT_SECRET: "your-secure-random-secret-key-here"  # MUST change this!
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRATION_HOURS: "24"
+  JIRA_ENABLED: "true"
+  SESSION_TIMEOUT_MINUTES: "30"
+
+secrets:
+  jiraApiToken: ""  # Set your Jira API token
+  databasePassword: "your-very-secure-password-here"  # Must match postgresql.auth.password
+
+podSecurityContext:
+  runAsNonRoot: false
+  fsGroup: 1000
+
+autos​caling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+nodeSelector:
+  workload: app  # Change based on your node labels
+
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - agile-poker
+          topologyKey: kubernetes.io/hostname
