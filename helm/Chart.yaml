@@ -16,3 +16,15 @@ keywords:
 home: https://github.com/yatchenkods/agile-poker
 sources:
   - https://github.com/yatchenkods/agile-poker
+
+dependencies:
+  - name: postgresql
+    version: "11.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+    alias: postgresql
+  - name: redis
+    version: "17.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+    alias: redis
