@@ -62,6 +62,19 @@ spec:
               name: {{ include "agile-poker.fullname" . }}-db
               key: connection-string
         {{- end }}
+        {{- if .Values.redis.enabled }}
+        - name: REDIS_HOST
+          value: "{{ include "agile-poker.fullname" . }}-redis-master"
+        - name: REDIS_PORT
+          value: "6379"
+        {{- if .Values.redis.auth.enabled }}
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: {{ include "agile-poker.fullname" . }}-secrets
+              key: redis-password
+        {{- end }}
+        {{- end }}
         {{- range $key, $value := .Values.env }}
         - name: {{ $key }}
           value: "{{ $value }}"
