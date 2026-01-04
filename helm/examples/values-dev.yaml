@@ -36,12 +36,31 @@ postgresql:
     persistence:
       enabled: false  # Disable persistence in dev
 
+redis:
+  enabled: true
+  auth:
+    enabled: false  # Disable authentication in dev
+  master:
+    persistence:
+      enabled: false  # Disable persistence in dev
+  replica:
+    replicaCount: 0  # No replicas in dev
+  metrics:
+    enabled: false  # Disable metrics in dev
+
 env:
   LOG_LEVEL: "debug"
   WORKERS: "1"
   DATABASE_POOL_SIZE: "5"
   CORS_ORIGINS: "*"
   JWT_SECRET: "dev-secret-key-not-secure"
+  REDIS_ENABLED: "true"
+  REDIS_MAX_CONNECTIONS: "10"
+
+secrets:
+  jiraApiToken: ""
+  databasePassword: "dev_password_123"
+  redisPassword: ""  # No password in dev
 
 autoscaling:
   enabled: false  # No autoscaling in dev
