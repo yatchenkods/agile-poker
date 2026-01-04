@@ -16,7 +16,7 @@ helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 ```
 
-### 3. Установите зависимости чарта
+### 3. Обновите зависимости
 
 ```bash
 cd helm
@@ -36,11 +36,14 @@ helm install agile-poker ./helm -f helm/examples/values-dev.yaml
 helm install agile-poker ./helm -f helm/examples/values-prod.yaml
 ```
 
-**С использованием внешней БД (без встроенного PostgreSQL):**
+**С использованием внешней БД (без встроенных PostgreSQL/Redis):**
 ```bash
 helm install agile-poker ./helm \
   --set postgresql.enabled=false \
-  --set env.DATABASE_URL="postgresql://user:password@your-db:5432/agile_poker"
+  --set redis.enabled=false \
+  --set env.DATABASE_URL="postgresql://user:password@your-db:5432/agile_poker" \
+  --set env.REDIS_HOST="your-redis-host" \
+  --set env.REDIS_PORT="6379"
 ```
 
 ## Детальная установка
@@ -92,6 +95,12 @@ kubectl get ingress agile-poker
 
 # Смотрим логи
 kubectl logs -l app.kubernetes.io/name=agile-poker -f
+
+# Проверить PostgreSQL pods
+kubectl get pods -l app.kubernetes.io/name=postgresql
+
+# Проверить Redis pods
+kubectl get pods -l app.kubernetes.io/name=redis
 ```
 
 ## Доступ к приложению
@@ -269,6 +278,16 @@ spec:
 EOF
 ```
 
+## Проверка зависимостей
+
+```bash
+# Просмотр текущих зависимостей
+helm dependency list ./helm
+
+# Обновить чарты зависимостей
+helm dependency update ./helm
+```
+
 ## Решение проблем
 
 ### Поды не запускаются
@@ -289,6 +308,17 @@ kubectl run -it --image=postgres:15 --rm psql -- \
   psql postgresql://user:pass@agile-poker-postgresql:5432/agile_poker
 ```
 
+### Ошибки Redis
+
+```bash
+# Проверьте Redis pods
+kubectl get pods -l app.kubernetes.io/name=redis
+
+# Подключитесь к Redis
+kubectl port-forward svc/agile-poker-redis-master 6379:6379
+redis-cli -a "password" ping
+```
+
 ### Проблемы с Ingress
 
 ```bash
@@ -301,3 +331,5 @@ kubectl logs -n nginx-ingress deployment/nginx-ingress-controller
 - [Helm документация](https://helm.sh/docs/)
 - [Kubernetes документация](https://kubernetes.io/docs/)
 - [README чарта](./README.md)
+- [Bitnami PostgreSQL Chart](https://github.com/bitnami/charts/tree/main/bitnami/postgresql)
+- [Bitnami Redis Chart](https://github.com/bitnami/charts/tree/main/bitnami/redis)
