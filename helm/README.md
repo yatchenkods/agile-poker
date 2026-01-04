@@ -1,44 +1,44 @@
 # Agile Poker Helm Chart
 
-Helmチャートを使用してKubernetesクラスタに**Agile Planning Poker**アプリケーションをデプロイします。
+Helm чарт для развертывания приложения **Agile Planning Poker** в Kubernetes кластере.
 
-## 前提条件
+## Предварительные требования
 
-- Kubernetes 1.19以上
-- Helm 3.0以上
-- PostgreSQLデータベース（または、チャートにバンドルされたPostgreSQLを使用）
+- Kubernetes 1.19+
+- Helm 3.0+
+- PostgreSQL база данных (или используйте встроенную PostgreSQL из чарта)
 
-## インストール
+## Установка
 
-### 1. Helm リポジトリの追加
+### 1. Добавьте Helm репозиторий
 
 ```bash
 helm repo add bitnami https://charts.bitnami.com/bitnami
 helm repo update
 ```
 
-### 2. チャートの依存関係を更新
+### 2. Обновите зависимости чарта
 
 ```bash
 cd helm
 helm dependency update
 ```
 
-### 3. チャートのインストール
+### 3. Установите чарт
 
-**デフォルト値を使用する場合：**
+**С дефолтными значениями:**
 
 ```bash
 helm install agile-poker ./helm
 ```
 
-**カスタム値を使用する場合：**
+**С кастомными значениями:**
 
 ```bash
 helm install agile-poker ./helm -f values-prod.yaml
 ```
 
-### 4. デプロイメントの確認
+### 4. Проверьте развертывание
 
 ```bash
 kubectl get pods -l app.kubernetes.io/name=agile-poker
@@ -46,26 +46,26 @@ kubectl describe pod <pod-name>
 kubectl logs <pod-name>
 ```
 
-## 設定
+## Конфигурация
 
-### 主要な設定オプション
+### Основные параметры конфигурации
 
 ```yaml
-# レプリカ数
+# Количество реплик
 replicaCount: 2
 
-# イメージ設定
+# Настройки образа
 image:
   repository: yatchenkods/agile-poker
   tag: "latest"
   pullPolicy: IfNotPresent
 
-# サービス設定
+# Настройки сервиса
 service:
   type: ClusterIP
   port: 8000
 
-# Ingress設定
+# Настройки Ingress
 ingress:
   enabled: true
   className: "nginx"
@@ -79,7 +79,7 @@ ingress:
       hosts:
         - agile-poker.example.com
 
-# リソース制限
+# Лимиты ресурсов
 resources:
   limits:
     cpu: 500m
@@ -88,7 +88,7 @@ resources:
     cpu: 250m
     memory: 256Mi
 
-# PostgreSQL設定
+# Настройки PostgreSQL
 postgresql:
   enabled: true
   auth:
@@ -101,92 +101,97 @@ postgresql:
       size: 10Gi
 ```
 
-## 本番環境での使用
+## Использование в production
 
-本番環境では、以下の点を確認してください：
+Для production окружения обязательно настройте следующие параметры:
 
-1. **パスワード変更**
-   ```yaml
-   postgresql:
-     auth:
-       password: "your-strong-password-here"
-   secrets:
-     databasePassword: "your-strong-password-here"
-     jiraApiToken: "your-jira-token"
-   ```
+### 1. Измените пароли
 
-2. **JWT Secret変更**
-   ```yaml
-   env:
-     JWT_SECRET: "your-secure-random-secret"
-   ```
+```yaml
+postgresql:
+  auth:
+    password: "your-strong-password-here"
+secrets:
+  databasePassword: "your-strong-password-here"
+  jiraApiToken: "your-jira-token"
+```
 
-3. **Ingress設定**
-   ```yaml
-   ingress:
-     enabled: true
-     hosts:
-       - host: agile-poker.yourdomain.com
-     tls:
-       - secretName: agile-poker-tls
-         hosts:
-           - agile-poker.yourdomain.com
-   ```
+### 2. Измените JWT секрет
 
-4. **リソース制限の最適化**
-   ```yaml
-   resources:
-     limits:
-       cpu: 1000m
-       memory: 1Gi
-     requests:
-       cpu: 500m
-       memory: 512Mi
-   ```
+```yaml
+env:
+  JWT_SECRET: "your-secure-random-secret"
+```
 
-5. **自動スケーリング有効化**
-   ```yaml
-   autoscaling:
-     enabled: true
-     minReplicas: 2
-     maxReplicas: 10
-     targetCPUUtilizationPercentage: 80
-   ```
+### 3. Настройте Ingress
 
-## アップグレード
+```yaml
+ingress:
+  enabled: true
+  hosts:
+    - host: agile-poker.yourdomain.com
+  tls:
+    - secretName: agile-poker-tls
+      hosts:
+        - agile-poker.yourdomain.com
+```
+
+### 4. Оптимизируйте лимиты ресурсов
+
+```yaml
+resources:
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+```
+
+### 5. Включите автомасштабирование
+
+```yaml
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+```
+
+## Обновление
 
 ```bash
-# チャートの更新
+# Обновить чарт
 helm upgrade agile-poker ./helm -f values-prod.yaml
 
-# ロールバック
+# Откатить к предыдущей версии
 helm rollback agile-poker 1
 ```
 
-## アンインストール
+## Удаление
 
 ```bash
 helm uninstall agile-poker
 ```
 
-## トラブルシューティング
+## Устранение неполадок
 
-### ポッドが起動しない場合
+### Поды не запускаются
 
 ```bash
 kubectl describe pod <pod-name>
 kubectl logs <pod-name>
-kubectl get pvc  # PersistentVolumeClaimの確認
+kubectl get pvc  # Проверка PersistentVolumeClaim
 ```
 
-### データベース接続エラー
+### Ошибки подключения к базе данных
 
 ```bash
 kubectl get secret agile-poker-db -o yaml
 kubectl port-forward svc/agile-poker-postgresql 5432:5432
 ```
 
-### ストレージの問題
+### Проблемы со хранилищем
 
 ```bash
 kubectl get pv
@@ -194,21 +199,91 @@ kubectl get pvc
 kubectl describe pvc agile-poker-postgresql
 ```
 
-## デバッグ
+## Отладка
 
 ```bash
-# チャートのテンプレートを確認
+# Просмотр сгенерированных манифестов
 helm template agile-poker ./helm
 
-# Kubernetesマニフェストの検証
+# Проверка синтаксиса чарта
 helm lint ./helm
 
-# 詳細なデバッグ情報
+# Детальная отладка (dry-run)
 helm install agile-poker ./helm --debug --dry-run
 ```
 
-## サポート
+## Примеры использования
 
-問題が発生した場合は、GitHubのIssuesセクションで報告してください。
+### Установка для разработки
+
+```bash
+helm install agile-poker ./helm -f helm/examples/values-dev.yaml
+```
+
+### Установка для production
+
+```bash
+helm install agile-poker ./helm -f helm/examples/values-prod.yaml
+```
+
+### Использование внешней базы данных
+
+```bash
+helm install agile-poker ./helm \
+  --set postgresql.enabled=false \
+  --set env.DATABASE_URL="postgresql://user:pass@db-host:5432/agile_poker"
+```
+
+### Настройка Jira интеграции
+
+```bash
+helm install agile-poker ./helm \
+  --set secrets.jiraApiToken="your-jira-api-token"
+```
+
+## Мониторинг и логирование
+
+### Проверка здоровья приложения
+
+```bash
+# Port-forward для доступа к health endpoint
+kubectl port-forward svc/agile-poker 8000:8000
+curl http://localhost:8000/health
+```
+
+### Просмотр логов
+
+```bash
+# Логи текущих подов
+kubectl logs -f deployment/agile-poker
+
+# Логи всех подов с меткой
+kubectl logs -f -l app.kubernetes.io/name=agile-poker
+
+# Логи предыдущего контейнера (если был перезапуск)
+kubectl logs -p deployment/agile-poker
+```
+
+## Безопасность
+
+### Рекомендации для production
+
+1. **Никогда не используйте дефолтные пароли**
+2. **Используйте Kubernetes Secrets** для хранения конфиденциальных данных
+3. **Настройте NetworkPolicies** для ограничения сетевого доступа
+4. **Включите Pod Security Standards**
+5. **Регулярно обновляйте образы** и зависимости
+6. **Настройте RBAC** для ограничения доступа
+
+## Поддержка
+
+Если у вас возникли проблемы, создайте issue на GitHub:
 
 https://github.com/yatchenkods/agile-poker/issues
+
+## Дополнительная документация
+
+- [Детальная инструкция по установке](./INSTALL.md)
+- [Примеры конфигураций](./examples/)
+- [Документация Kubernetes](https://kubernetes.io/docs/)
+- [Документация Helm](https://helm.sh/docs/)
