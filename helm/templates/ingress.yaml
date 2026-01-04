@@ -36,7 +36,7 @@ spec:
                 name: |
                   {{- if eq .path "/api" }}
                   {{ include "agile-poker.fullname" $ }}
-                  {{- else if .Values.frontend.enabled }}
+                  {{- else if and $.Values.frontend $.Values.frontend.enabled }}
                   {{ include "agile-poker.fullname" $ }}-frontend
                   {{- else }}
                   {{ include "agile-poker.fullname" $ }}
@@ -45,7 +45,7 @@ spec:
                   number: |
                     {{- if eq .path "/api" }}
                     {{ $.Values.service.port }}
-                    {{- else if .Values.frontend.enabled }}
+                    {{- else if and $.Values.frontend $.Values.frontend.enabled }}
                     {{ $.Values.frontend.service.port }}
                     {{- else }}
                     {{ $.Values.service.port }}
