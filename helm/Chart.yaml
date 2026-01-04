@@ -1,0 +1,30 @@
+apiVersion: v2
+name: agile-poker
+description: A Helm chart for deploying Agile Planning Poker application in Kubernetes
+type: application
+version: 1.0.0
+appVersion: "1.0"
+maintainers:
+  - name: yatchenkods
+    email: admin@agile-poker.local
+keywords:
+  - agile
+  - planning-poker
+  - scrum
+  - estimation
+  - jira
+home: https://github.com/yatchenkods/agile-poker
+sources:
+  - https://github.com/yatchenkods/agile-poker
+
+dependencies:
+  - name: postgresql
+    version: "16.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled
+    alias: postgresql
+  - name: redis
+    version: "20.7.1"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: redis.enabled
+    alias: redis

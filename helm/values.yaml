@@ -1,0 +1,185 @@
+# Default values for agile-poker Helm chart
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: default
+
+# Backend application image configuration
+image:
+  repository: yatchenkods/agile-poker
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Number of backend replicas
+replicaCount: 2
+
+# Backend resource limits and requests
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+
+# Backend service configuration
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+  annotations: {}
+
+# Frontend configuration
+frontend:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: yatchenkods/agile-poker-frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 3000
+    targetPort: 3000
+  resources:
+    limits:
+      cpu: 250m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  healthCheck:
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+  env:
+    REACT_APP_API_URL: "http://localhost:8000/api"
+    REACT_APP_LOG_LEVEL: "info"
+    REACT_APP_JIRA_ENABLED: "true"
+
+# Ingress configuration (serves both backend and frontend)
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: agile-poker.local
+      paths:
+        - path: /api
+          pathType: Prefix
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: agile-poker-tls
+      hosts:
+        - agile-poker.local
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    username: agile_user
+    password: changeme123  # Change this in production!
+    database: agile_poker
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: "standard"
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "redis_password_123"  # Change this in production!
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClassName: "standard"
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 8Gi
+      storageClassName: "standard"
+  metrics:
+    enabled: true
+
+# Backend environment variables
+env:
+  LOG_LEVEL: "DEBUG"
+  WORKERS: "4"
+  DATABASE_POOL_SIZE: "10"
+  CORS_ORIGINS: "*"
+  JWT_SECRET: "your-secret-key-change-in-production"  # MUST be changed in production!
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRATION_HOURS: "24"
+  JIRA_ENABLED: "true"
+  SESSION_TIMEOUT_MINUTES: "30"
+  REDIS_ENABLED: "true"
+  REDIS_MAX_CONNECTIONS: "50"
+
+# Secrets (mount as environment variables)
+secrets:
+  jiraApiToken: ""  # Set your Jira API token
+  databasePassword: "changeme123"  # Should match postgresql.auth.password
+  redisPassword: "redis_password_123"  # Should match redis.auth.password
+
+# Backend health check configuration
+healthCheck:
+  enabled: true
+  initialDelaySeconds: 40
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: false
+  fsGroup: 1000
+
+# Container security context
+securityContext: {}
+  # allowPrivilegeEscalation: false
+  # capabilities:
+  #   drop:
+  #   - ALL
+  # readOnlyRootFilesystem: true
+  # runAsNonRoot: true
+  # runAsUser: 1000
+
+# Node selector for pod scheduling
+nodeSelector: {}
+
+# Tolerations for node taints
+tolerances: []
+
+# Pod affinity rules
+affinity: {}
+
+# Autoscaling configuration
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Volume mounts for configuration files
+volumeMounts: []
+  # - name: config
+  #   mountPath: /app/config
+  #   readOnly: true
+
+volumes: []
+  # - name: config
+  #   configMap:
+  #     name: agile-poker-config
