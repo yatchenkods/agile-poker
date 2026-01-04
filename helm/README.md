@@ -39,7 +39,7 @@ helm install agile-poker ./helm
 **С кастомными значениями:**
 
 ```bash
-helm install agile-poker ./helm -f helm/examples/values-production.yaml
+helm install agile-poker ./helm -f values-custom.yaml
 ```
 
 ### 4. Проверьте развертывание
@@ -94,20 +94,20 @@ helm install agile-poker ./helm \
   --set frontend.env.REACT_APP_LOG_LEVEL="debug"
 ```
 
-**Production:**
+**Staging:**
 
 ```bash
 helm install agile-poker ./helm \
-  --set frontend.env.REACT_APP_API_URL="https://api.agile-poker.com" \
-  --set frontend.env.REACT_APP_WS_URL="wss://api.agile-poker.com" \
+  --set frontend.env.REACT_APP_API_URL="https://api-staging.example.com" \
+  --set frontend.env.REACT_APP_WS_URL="wss://api-staging.example.com" \
   --set frontend.env.REACT_APP_JIRA_ENABLED="true" \
   --set frontend.env.REACT_APP_LOG_LEVEL="info"
 ```
 
-**С values файлом:**
+**Production:**
 
 ```bash
-helm install agile-poker ./helm -f helm/examples/values-production.yaml
+helm install agile-poker ./helm -f values-prod.yaml
 ```
 
 ## Конфигурация
@@ -196,10 +196,20 @@ redis:
 ### 1. Используйте production values файл
 
 ```bash
-helm install agile-poker ./helm -f helm/examples/values-production.yaml
+helm install agile-poker ./helm -f values-prod.yaml
 ```
 
-### 2. Измените пароли
+### 2. Измените Frontend endpoints
+
+```bash
+helm install agile-poker ./helm \
+  --set frontend.env.REACT_APP_API_URL="https://api.agile-poker.com" \
+  --set frontend.env.REACT_APP_WS_URL="wss://api.agile-poker.com" \
+  --set frontend.env.REACT_APP_JIRA_ENABLED="true" \
+  --set frontend.env.REACT_APP_LOG_LEVEL="info"
+```
+
+### 3. Измените пароли
 
 ```bash
 helm install agile-poker ./helm \
@@ -209,22 +219,22 @@ helm install agile-poker ./helm \
   --set secrets.redisPassword="your-strong-password"
 ```
 
-### 3. Измените JWT секрет
+### 4. Измените JWT секрет
 
 ```bash
 helm install agile-poker ./helm \
   --set env.JWT_SECRET="your-secure-random-secret-256-bits"
 ```
 
-### 4. Настройте Frontend endpoints
+### 5. Настройте Ingress
 
 ```bash
 helm install agile-poker ./helm \
-  --set frontend.env.REACT_APP_API_URL="https://api.yourdomain.com" \
-  --set frontend.env.REACT_APP_WS_URL="wss://api.yourdomain.com"
+  --set ingress.hosts[0].host="agile-poker.yourdomain.com" \
+  --set ingress.tls[0].hosts[0]="agile-poker.yourdomain.com"
 ```
 
-### 5. Оптимизируйте лимиты ресурсов
+### 6. Оптимизируйте лимиты ресурсов
 
 ```bash
 helm install agile-poker ./helm \
@@ -234,7 +244,7 @@ helm install agile-poker ./helm \
   --set resources.requests.memory="512Mi"
 ```
 
-### 6. Включите автомасштабирование
+### 7. Включите автомасштабирование
 
 ```bash
 helm install agile-poker ./helm \
@@ -247,7 +257,7 @@ helm install agile-poker ./helm \
 
 ```bash
 # Обновить чарт
-helm upgrade agile-poker ./helm -f helm/examples/values-production.yaml
+helm upgrade agile-poker ./helm -f values-prod.yaml
 
 # Откатить к предыдущей версии
 helm rollback agile-poker 1
@@ -259,9 +269,9 @@ helm rollback agile-poker 1
 helm uninstall agile-poker
 ```
 
-## Устранение неполадок
+## Проверка Runtime Configuration
 
-### Проверка Frontend Runtime Configuration
+### Verify Frontend Runtime Configuration
 
 ```bash
 # Проверить что env переменные переданы
@@ -274,32 +284,24 @@ kubectl exec -it <frontend-pod-name> -- cat /usr/share/nginx/html/config.js
 # DevTools -> Network tab -> просмотреть API endpoint
 ```
 
-### Поды не запускаются
+### Устранение неполадок
 
 ```bash
+# Поды не запускаются
 kubectl describe pod <pod-name>
 kubectl logs <pod-name>
 kubectl get pvc  # Проверка PersistentVolumeClaim
-```
 
-### Ошибки подключения к базе данных
-
-```bash
+# Ошибки подключения к базе данных
 kubectl get secret agile-poker-db -o yaml
 kubectl port-forward svc/agile-poker-postgresql 5432:5432
-```
 
-### Ошибки Redis
-
-```bash
+# Ошибки Redis
 kubectl get pods -l app.kubernetes.io/name=redis
 kubectl port-forward svc/agile-poker-redis-master 6379:6379
 redis-cli -a "password" ping
-```
 
-### Проблемы со хранилищем
-
-```bash
+# Проблемы со хранилищем
 kubectl get pv
 kubectl get pvc
 kubectl describe pvc agile-poker-postgresql
@@ -330,12 +332,6 @@ helm template agile-poker ./helm -s frontend.env
 helm install agile-poker ./helm \
   --set frontend.env.REACT_APP_API_URL="http://localhost:8000" \
   --set frontend.env.REACT_APP_LOG_LEVEL="debug"
-```
-
-### Установка для production
-
-```bash
-helm install agile-poker ./helm -f helm/examples/values-production.yaml
 ```
 
 ### Использование внешней базы данных
