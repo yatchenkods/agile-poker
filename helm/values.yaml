@@ -112,7 +112,7 @@ redis:
 
 # Backend environment variables
 env:
-  LOG_LEVEL: "info"
+  LOG_LEVEL: "DEBUG"
   WORKERS: "4"
   DATABASE_POOL_SIZE: "10"
   CORS_ORIGINS: "*"
