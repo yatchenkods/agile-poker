@@ -39,8 +39,14 @@ spec:
           containerPort: {{ .Values.frontend.service.targetPort }}
           protocol: TCP
         # Use init script from ConfigMap to generate config.js before starting app
+        # The init script will receive the original entrypoint as args
         command:
           - /app/init/init.sh
+        # Pass the original Docker CMD/ENTRYPOINT to init script via args
+        # This allows init.sh to: generate config.js, then exec "$@" to run the original command
+        args:
+          - npm
+          - start
         {{- if .Values.frontend.healthCheck.enabled }}
         livenessProbe:
           httpGet:
