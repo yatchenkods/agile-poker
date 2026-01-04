@@ -28,28 +28,32 @@ spec:
     - host: {{ .host | quote }}
       http:
         paths:
-          {{- range .paths }}
-          - path: {{ .path }}
-            pathType: {{ .pathType }}
+          # API Backend path
+          - path: /api
+            pathType: Prefix
             backend:
               service:
-                name: |
-                  {{- if eq .path "/api" }}
-                  {{ include "agile-poker.fullname" $ }}
-                  {{- else if and $.Values.frontend $.Values.frontend.enabled }}
-                  {{ include "agile-poker.fullname" $ }}-frontend
-                  {{- else }}
-                  {{ include "agile-poker.fullname" $ }}
-                  {{- end }}
+                name: {{ include "agile-poker.fullname" $ }}
                 port:
-                  number: |
-                    {{- if eq .path "/api" }}
-                    {{ $.Values.service.port }}
-                    {{- else if and $.Values.frontend $.Values.frontend.enabled }}
-                    {{ $.Values.frontend.service.port }}
-                    {{- else }}
-                    {{ $.Values.service.port }}
-                    {{- end }}
+                  number: {{ $.Values.service.port }}
+          {{- if and $.Values.frontend $.Values.frontend.enabled }}
+          # Frontend path
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "agile-poker.fullname" $ }}-frontend
+                port:
+                  number: {{ $.Values.frontend.service.port }}
+          {{- else }}
+          # Fallback to backend for root path
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "agile-poker.fullname" $ }}
+                port:
+                  number: {{ $.Values.service.port }}
           {{- end }}
     {{- end }}
 {{- end }}
