@@ -38,26 +38,9 @@ spec:
         - name: http
           containerPort: {{ .Values.frontend.service.targetPort }}
           protocol: TCP
-        # Generate config.js before starting the application
+        # Use init script from ConfigMap to generate config.js before starting app
         command:
-          - sh
-          - -c
-          - |
-            # Create config.js
-            cat > /app/build/config.js << 'EOF'
-            window.__RUNTIME_CONFIG__ = {
-              REACT_APP_API_URL: '{{ .Values.frontend.env.REACT_APP_API_URL }}',
-              REACT_APP_LOG_LEVEL: '{{ .Values.frontend.env.REACT_APP_LOG_LEVEL }}',
-              REACT_APP_JIRA_ENABLED: '{{ .Values.frontend.env.REACT_APP_JIRA_ENABLED }}'
-            };
-            EOF
-            echo "Config generated successfully"
-            
-            # Then start the application
-            exec "$@"
-        args:
-          - npm
-          - start
+          - /app/init/init.sh
         {{- if .Values.frontend.healthCheck.enabled }}
         livenessProbe:
           httpGet:
@@ -85,12 +68,21 @@ spec:
         resources:
           {{- toYaml . | nindent 12 }}
         {{- end }}
-        {{- with .Values.volumeMounts }}
         volumeMounts:
+        # Mount init script from ConfigMap
+        - name: init-script
+          mountPath: /app/init
+          readOnly: true
+        {{- with .Values.volumeMounts }}
           {{- toYaml . | nindent 12 }}
         {{- end }}
-      {{- with .Values.volumes }}
       volumes:
+      # ConfigMap with initialization script
+      - name: init-script
+        configMap:
+          name: {{ include "agile-poker.fullname" . }}-frontend-init
+          defaultMode: 0755
+      {{- with .Values.volumes }}
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with .Values.nodeSelector }}
