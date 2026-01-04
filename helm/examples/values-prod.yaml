@@ -53,6 +53,41 @@ postgresql:
         cpu: 500m
         memory: 1Gi
 
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: "your-very-secure-redis-password"  # MUST change this!
+  master:
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: "fast-ssd"  # Change based on your cluster
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 10Gi
+      storageClassName: "fast-ssd"  # Change based on your cluster
+    resources:
+      limits:
+        cpu: 500m
+        memory: 512Mi
+      requests:
+        cpu: 250m
+        memory: 256Mi
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true  # Enable if using Prometheus Operator
+
 env:
   LOG_LEVEL: "info"
   WORKERS: "4"
@@ -63,16 +98,19 @@ env:
   JWT_EXPIRATION_HOURS: "24"
   JIRA_ENABLED: "true"
   SESSION_TIMEOUT_MINUTES: "30"
+  REDIS_ENABLED: "true"
+  REDIS_MAX_CONNECTIONS: "100"
 
 secrets:
   jiraApiToken: ""  # Set your Jira API token
   databasePassword: "your-very-secure-password-here"  # Must match postgresql.auth.password
+  redisPassword: "your-very-secure-redis-password"  # Must match redis.auth.password
 
 podSecurityContext:
   runAsNonRoot: false
   fsGroup: 1000
 
-autos​caling:
+autoscaling:
   enabled: true
   minReplicas: 3
   maxReplicas: 10
