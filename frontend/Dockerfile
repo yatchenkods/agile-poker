@@ -16,7 +16,7 @@ FROM nginx:1.24-alpine
 RUN rm /etc/nginx/conf.d/default.conf
 
 # Copy custom nginx config
-COPY frontend/nginx.conf /etc/nginx/conf.d/app.conf
+COPY nginx.conf /etc/nginx/conf.d/app.conf
 
 # Copy built React app
 COPY --from=builder /app/build /usr/share/nginx/html
@@ -24,7 +24,7 @@ COPY --from=builder /app/build /usr/share/nginx/html
 # Create entrypoint script to inject runtime configuration
 RUN apk add --no-cache bash
 
-COPY frontend/entrypoint.sh /entrypoint.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 # Health check
