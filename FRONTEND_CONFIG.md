@@ -10,13 +10,14 @@ React environment variables (`REACT_APP_*`) are baked into the JavaScript bundle
 
 ## Solution
 
-We inject a `config.js` file at **runtime** (container startup) with all configuration values.
+We inject a `config.js` file at **runtime** (container startup) with all configuration values using Kubernetes **postStart lifecycle hook**.
 
 ### How It Works
 
-1. **Helm initContainer** generates `/app/build/config.js` with values from `values.yaml`
-2. **React HTML** includes this script: `<script src="/config.js"></script>`
-3. **React app** reads config from `window.__RUNTIME_CONFIG__`
+1. **Container starts** - Frontend container initializes with all files in `/app/build`
+2. **postStart hook runs** - Kubernetes postStart hook generates `/app/build/config.js` from Helm values
+3. **React HTML** includes this script: `<script src="/config.js"></script>`
+4. **React app** reads config from `window.__RUNTIME_CONFIG__`
 
 ### Generated config.js
 
@@ -110,7 +111,8 @@ const MyComponent = () => {
 ### Step-by-step process:
 
 1. **Pod starts** - Kubernetes creates frontend pod
-2. **initContainer runs** - Before main container, initContainer executes:
+2. **Container initializes** - Container starts, `/app/build` contains all React build files
+3. **postStart hook runs** - AFTER container starts, postStart lifecycle hook executes:
    ```bash
    cat > /app/build/config.js << 'EOF'
    window.__RUNTIME_CONFIG__ = {
@@ -120,23 +122,39 @@ const MyComponent = () => {
    };
    EOF
    ```
-3. **Volume shared** - Both initContainer and main container share `/app/build` volume
-4. **Application starts** - Main container starts and serves files including generated `config.js`
-5. **Browser loads HTML** - React HTML includes `<script src="/config.js"></script>`
-6. **Config loaded** - JavaScript runs and `window.__RUNTIME_CONFIG__` is available
-7. **App reads config** - React app reads from `window.__RUNTIME_CONFIG__`
+4. **Config file added** - `config.js` is added to existing `/app/build` directory (doesn't replace it)
+5. **Application running** - Web server serves all files including generated `config.js`
+6. **Browser loads HTML** - React HTML includes `<script src="/config.js"></script>`
+7. **Config loaded** - JavaScript runs and `window.__RUNTIME_CONFIG__` is available
+8. **App reads config** - React app reads from `window.__RUNTIME_CONFIG__`
 
-### Volume setup:
+### postStart Hook in Deployment:
 
 ```yaml
-volumes:
-  - name: app-build
-    emptyDir: {}  # Temporary volume shared between initContainer and main container
-
-volumeMounts:
-  - name: app-build
-    mountPath: /app/build
+lifecycle:
+  postStart:
+    exec:
+      command:
+        - sh
+        - -c
+        - |
+          cat > /app/build/config.js << 'EOF'
+          window.__RUNTIME_CONFIG__ = {
+            REACT_APP_API_URL: '{{ .Values.frontend.env.REACT_APP_API_URL }}',
+            REACT_APP_LOG_LEVEL: '{{ .Values.frontend.env.REACT_APP_LOG_LEVEL }}',
+            REACT_APP_JIRA_ENABLED: '{{ .Values.frontend.env.REACT_APP_JIRA_ENABLED }}'
+          };
+          EOF
 ```
+
+### Benefits of postStart vs initContainer:
+
+| Aspect | postStart | initContainer |
+|--------|-----------|---------------|
+| **Container files** | ✅ Preserved | ❌ Replaced by emptyDir |
+| **Execution time** | After container start | Before container start |
+| **Use case** | Add config to existing files | Initialize from scratch |
+| **Our usage** | ✅ Adds config.js to /app/build | ❌ Would replace /app/build |
 
 ## Deployment
 
@@ -177,7 +195,8 @@ window.__RUNTIME_CONFIG__ = {
 ✅ **No secrets in image** - All sensitive data injected at runtime  
 ✅ **Environment-specific** - Different values for dev/staging/prod  
 ✅ **Easy to debug** - Open DevTools → check `window.__RUNTIME_CONFIG__`
-✅ **No nginx rebuild** - Works with any Node.js or static server  
+✅ **Preserves build files** - All React build files are kept intact  
+✅ **Works with any server** - nginx, Node.js, Apache, etc.  
 
 ## Troubleshooting
 
@@ -210,11 +229,12 @@ curl http://localhost:3000/config.js
 ### Check pod logs
 
 ```bash
-# View initContainer logs
-kubectl logs -f deployment/agile-poker-frontend -c config-init
-
 # View main container logs
 kubectl logs -f deployment/agile-poker-frontend -c frontend
+
+# Check for postStart hook errors
+kubectl describe pod <pod-name>
+# Look for 'postStart' events
 ```
 
 ### Verify config.js was written
@@ -223,8 +243,17 @@ kubectl logs -f deployment/agile-poker-frontend -c frontend
 # Exec into running pod
 kubectl exec -it deployment/agile-poker-frontend -- sh
 
-# Check if file exists
+# Check if file exists and has correct content
 cat /app/build/config.js
+```
+
+### Check container file structure
+
+```bash
+# List all files in /app/build
+kubectl exec deployment/agile-poker-frontend -- ls -la /app/build/
+
+# Should show your React build files PLUS config.js
 ```
 
 ## Adding New Config Variables
@@ -236,7 +265,7 @@ frontend:
     REACT_APP_MY_VAR: "my-value"
 ```
 
-### 2. Update `helm/templates/frontend-deployment.yaml` initContainer script:
+### 2. Update `helm/templates/frontend-deployment.yaml` postStart hook:
 
 Add to the `cat > /app/build/config.js` section:
 ```bash
@@ -251,9 +280,9 @@ const myVar = window.__RUNTIME_CONFIG__.REACT_APP_MY_VAR;
 ## Docker Image Requirements
 
 Your frontend Docker image should:
-- ✅ Use `/app/build` directory for React build files (or configure volume mount)
-- ✅ Have a web server (nginx, Node.js, etc.) serving static files
-- ✅ Support serving files from `/app/build/` or mount point
+- ✅ Have build output in `/app/build` directory
+- ✅ Have a web server serving static files from `/app/build/`
+- ✅ Have `/app/build` directory accessible and writable for config.js generation
 
 ### Example Dockerfile:
 
@@ -265,8 +294,27 @@ RUN npm install
 COPY . .
 RUN npm run build
 
+FROM node:18
+WORKDIR /app
+COPY --from=builder /app/build ./build
+RUN npm install -g serve
+EXPOSE 3000
+CMD ["serve", "-s", "build", "-l", "3000"]
+```
+
+Or with nginx:
+
+```dockerfile
+FROM node:18 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
 FROM nginx:alpine
-COPY --from=builder /app/build /app/build
+WORKDIR /app
+COPY --from=builder /app/build ./build
 COPY nginx.conf /etc/nginx/nginx.conf
 EXPOSE 3000
 CMD ["nginx", "-g", "daemon off;"]
@@ -277,9 +325,15 @@ CMD ["nginx", "-g", "daemon off;"]
 ```nginx
 server {
     listen 3000;
+    root /app/build;
+    
     location / {
-        root /app/build;
-        try_files $uri /index.html;
+        try_files $uri $uri/ /index.html;
+    }
+    
+    # Allow serving config.js
+    location = /config.js {
+        try_files $uri =404;
     }
 }
 ```
