@@ -70,16 +70,21 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: agile-poker-frontend
+    # Runtime environment variables for API configuration
+    # These are injected into config.js at container startup
     environment:
+      # API endpoint - update this if your API is on a different host/port
       REACT_APP_API_URL: http://localhost:8000
+      # WebSocket endpoint - update for production (use wss:// with SSL)
       REACT_APP_WS_URL: ws://localhost:8000
+      # Enable/disable Jira integration
+      REACT_APP_JIRA_ENABLED: "false"
+      # Log level: debug, info, warn, error
+      REACT_APP_LOG_LEVEL: info
     ports:
       - "3000:3000"
     depends_on:
       - api
-    volumes:
-      - ./frontend/src:/app/src
-      - ./frontend/public:/app/public
     networks:
       - agile-network
 
