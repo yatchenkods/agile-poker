@@ -114,6 +114,8 @@ frontend:
     timeoutSeconds: 5
     failureThreshold: 3
   env:
+    # For production, use HTTPS and Ingress domain
+    # Frontend and Backend communicate through Ingress internally
     REACT_APP_API_URL: "https://agile-poker.yourdomain.com/api"  # Change to your domain
     REACT_APP_LOG_LEVEL: "info"
     REACT_APP_JIRA_ENABLED: "true"
