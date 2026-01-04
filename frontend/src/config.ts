@@ -8,7 +8,7 @@
  * 3. Hardcoded defaults
  */
 
-interface RuntimeConfig {
+export interface RuntimeConfig {
   apiUrl: string;
   wsUrl: string;
   logLevel: string;
@@ -26,29 +26,62 @@ declare global {
   }
 }
 
+/**
+ * Get current configuration
+ * This function is called dynamically to ensure runtime config is available
+ * (not just at module load time)
+ */
 function getConfig(): RuntimeConfig {
   let apiUrl: string;
   let wsUrl: string;
   let logLevel: string;
   let jiraEnabled: boolean;
 
-  // Try runtime config first (from window.__RUNTIME_CONFIG__)
-  if (typeof window !== 'undefined' && window.__RUNTIME_CONFIG__) {
-    apiUrl = window.__RUNTIME_CONFIG__.REACT_APP_API_URL || process.env.REACT_APP_API_URL || 'http://localhost:8000';
-    wsUrl = window.__RUNTIME_CONFIG__.REACT_APP_WS_URL || process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
-    logLevel = window.__RUNTIME_CONFIG__.REACT_APP_LOG_LEVEL || process.env.REACT_APP_LOG_LEVEL || 'info';
-    jiraEnabled = (window.__RUNTIME_CONFIG__.REACT_APP_JIRA_ENABLED || process.env.REACT_APP_JIRA_ENABLED || 'false').toLowerCase() === 'true';
+  // Determine source of configuration
+  const hasRuntimeConfig = typeof window !== 'undefined' && window.__RUNTIME_CONFIG__;
+  
+  if (hasRuntimeConfig) {
+    // Priority 1: Runtime config (from window.__RUNTIME_CONFIG__)
+    apiUrl = window.__RUNTIME_CONFIG__!.REACT_APP_API_URL || '';
+    wsUrl = window.__RUNTIME_CONFIG__!.REACT_APP_WS_URL || '';
+    logLevel = window.__RUNTIME_CONFIG__!.REACT_APP_LOG_LEVEL || '';
+    jiraEnabled = (window.__RUNTIME_CONFIG__!.REACT_APP_JIRA_ENABLED || 'false').toLowerCase() === 'true';
+    
+    // Log that we're using runtime config
+    console.log('[Config] Using runtime configuration from window.__RUNTIME_CONFIG__');
   } else {
-    // Fallback to build-time environment variables
-    apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
-    wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:8000';
-    logLevel = process.env.REACT_APP_LOG_LEVEL || 'info';
+    // Priority 2: Build-time environment variables
+    apiUrl = process.env.REACT_APP_API_URL || '';
+    wsUrl = process.env.REACT_APP_WS_URL || '';
+    logLevel = process.env.REACT_APP_LOG_LEVEL || '';
     jiraEnabled = (process.env.REACT_APP_JIRA_ENABLED || 'false').toLowerCase() === 'true';
+    
+    if (apiUrl || wsUrl) {
+      console.log('[Config] Using build-time environment variables');
+    }
   }
+  
+  // Priority 3: Apply defaults (these are the fallbacks)
+  apiUrl = apiUrl || 'http://localhost:8000';
+  wsUrl = wsUrl || 'ws://localhost:8000';
+  logLevel = logLevel || 'info';
+  // jiraEnabled is already boolean, defaults to false
 
   // Ensure URLs don't have trailing slashes
   apiUrl = apiUrl.replace(/\/$/, '');
   wsUrl = wsUrl.replace(/\/$/, '');
+
+  // Log final configuration (safe for production, only non-sensitive data)
+  const shouldLog = typeof window !== 'undefined' && (logLevel === 'debug' || logLevel === 'trace');
+  if (shouldLog) {
+    console.log('[Config] Final configuration loaded:', {
+      apiUrl,
+      wsUrl,
+      logLevel,
+      jiraEnabled,
+      source: hasRuntimeConfig ? 'runtime' : 'environment/defaults',
+    });
+  }
 
   return {
     apiUrl,
@@ -58,16 +91,42 @@ function getConfig(): RuntimeConfig {
   };
 }
 
-export const config = getConfig();
+// Create a getter for lazy loading the configuration
+// This ensures config is read when actually needed, not at module import time
+let cachedConfig: RuntimeConfig | null = null;
 
-// Log configuration (safe for production, non-sensitive data only)
-if (typeof window !== 'undefined' && config.logLevel === 'debug') {
-  console.log('[Config] Loaded configuration:', {
-    apiUrl: config.apiUrl,
-    wsUrl: config.wsUrl,
-    logLevel: config.logLevel,
-    jiraEnabled: config.jiraEnabled,
-  });
+function getConfigValue(): RuntimeConfig {
+  if (!cachedConfig) {
+    cachedConfig = getConfig();
+  }
+  return cachedConfig;
 }
 
+// Re-evaluate config when accessed (in case window.__RUNTIME_CONFIG__ changes)
+// This is useful for hot reload or if config is injected after module load
+Object.defineProperty(globalThis, '__getConfig', {
+  value: getConfigValue,
+  writable: false,
+  enumerable: false,
+});
+
+// Export a proxy object that always reads fresh config
+export const config = new Proxy({} as RuntimeConfig, {
+  get: (target, prop) => {
+    const currentConfig = getConfigValue();
+    return currentConfig[prop as keyof RuntimeConfig];
+  },
+});
+
 export default config;
+
+// Also export a function to manually get fresh config (useful for debugging)
+export function refreshConfig(): RuntimeConfig {
+  cachedConfig = null;
+  return getConfigValue();
+}
+
+// Export a function to get config at a specific moment
+export function getConfigNow(): RuntimeConfig {
+  return getConfig();
+}
