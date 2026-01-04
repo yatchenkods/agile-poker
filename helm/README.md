@@ -7,6 +7,7 @@ Helm чарт для развертывания приложения **Agile Pla
 - Kubernetes 1.19+
 - Helm 3.0+
 - PostgreSQL база данных (или используйте встроенную PostgreSQL из чарта)
+- Redis (опционально, для кэширования)
 
 ## Установка
 
@@ -19,9 +20,12 @@ helm repo update
 
 ### 2. Обновите зависимости чарта
 
+Зависимости определены в `Chart.yaml` и автоматически скачиваются при установке. Если нужно обновить:
+
 ```bash
 cd helm
 helm dependency update
+cd ..
 ```
 
 ### 3. Установите чарт
@@ -99,6 +103,22 @@ postgresql:
     persistence:
       enabled: true
       size: 10Gi
+
+# Настройки Redis
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    password: redis_password_123
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+  replica:
+    replicaCount: 2
+    persistence:
+      enabled: true
+      size: 8Gi
 ```
 
 ## Использование в production
@@ -111,8 +131,12 @@ postgresql:
 postgresql:
   auth:
     password: "your-strong-password-here"
+redis:
+  auth:
+    password: "your-strong-password-here"
 secrets:
   databasePassword: "your-strong-password-here"
+  redisPassword: "your-strong-password-here"
   jiraApiToken: "your-jira-token"
 ```
 
@@ -191,12 +215,21 @@ kubectl get secret agile-poker-db -o yaml
 kubectl port-forward svc/agile-poker-postgresql 5432:5432
 ```
 
+### Ошибки Redis
+
+```bash
+kubectl get pods -l app.kubernetes.io/name=redis
+kubectl port-forward svc/agile-poker-redis-master 6379:6379
+redis-cli -a "password" ping
+```
+
 ### Проблемы со хранилищем
 
 ```bash
 kubectl get pv
 kubectl get pvc
 kubectl describe pvc agile-poker-postgresql
+kubectl describe pvc agile-poker-redis-master-0
 ```
 
 ## Отладка
@@ -231,7 +264,10 @@ helm install agile-poker ./helm -f helm/examples/values-prod.yaml
 ```bash
 helm install agile-poker ./helm \
   --set postgresql.enabled=false \
-  --set env.DATABASE_URL="postgresql://user:pass@db-host:5432/agile_poker"
+  --set redis.enabled=false \
+  --set env.DATABASE_URL="postgresql://user:pass@db-host:5432/agile_poker" \
+  --set env.REDIS_HOST="redis-host" \
+  --set env.REDIS_PORT="6379"
 ```
 
 ### Настройка Jira интеграции
@@ -287,3 +323,5 @@ https://github.com/yatchenkods/agile-poker/issues
 - [Примеры конфигураций](./examples/)
 - [Документация Kubernetes](https://kubernetes.io/docs/)
 - [Документация Helm](https://helm.sh/docs/)
+- [Bitnami PostgreSQL Chart](https://github.com/bitnami/charts/tree/main/bitnami/postgresql)
+- [Bitnami Redis Chart](https://github.com/bitnami/charts/tree/main/bitnami/redis)
