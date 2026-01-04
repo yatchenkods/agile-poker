@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { config } from '../config';
+import { config } from '../config.ts';
 
 // Use runtime config that supports environment variable override
 const API_URL = config.apiUrl;
