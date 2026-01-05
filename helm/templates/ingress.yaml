@@ -11,6 +11,15 @@ metadata:
   {{- with .Values.ingress.api.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
+    # WebSocket support annotations for NGINX Ingress Controller
+    # Required for proper WebSocket protocol upgrade handling
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "{{ .Values.ingress.api.websocket.readTimeout }}"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "{{ .Values.ingress.api.websocket.sendTimeout }}"
+    nginx.ingress.kubernetes.io/websocket-services: {{ include "agile-poker.fullname" . }}
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
   {{- end }}
 spec:
   {{- if .Values.ingress.className }}
