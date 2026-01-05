@@ -1,5 +1,20 @@
 # Development environment values for agile-poker
 # Usage: helm install agile-poker ./helm -f helm/examples/values-dev.yaml
+#
+# Features:
+# - Single replica for faster startup
+# - Localhost access (port forwarding or local ingress)
+# - No persistence (in-memory databases)
+# - Debug logging enabled
+# - CORS allows all origins
+# - No authentication overhead
+#
+# Access via port-forward:
+# kubectl port-forward -n agile-poker svc/agile-poker 8000:8000 &
+# kubectl port-forward -n agile-poker svc/agile-poker-frontend 3000:3000 &
+# Then: http://localhost:3000 and http://localhost:8000
+
+namespace: agile-poker
 
 replicaCount: 1
 
@@ -16,17 +31,29 @@ resources:
     cpu: 100m
     memory: 128Mi
 
+# Fixed Ingress configuration for development
+# Using separate API and Frontend Ingress resources
 ingress:
   enabled: true
   className: "nginx"
-  hosts:
-    - host: agile-poker.local
-      paths:
-        - path: /api
-          pathType: Prefix
-        - path: /
-          pathType: Prefix
-  tls: []
+  
+  # API Ingress - routes to backend service
+  api:
+    enabled: true
+    host: "api.local"  # Development hostname
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    tls:
+      enabled: false
+  
+  # Frontend Ingress - routes to React SPA service
+  frontend:
+    enabled: true
+    host: "app.local"  # Development hostname
+    annotations:
+      nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    tls:
+      enabled: false
 
 postgresql:
   enabled: true
@@ -37,6 +64,13 @@ postgresql:
   primary:
     persistence:
       enabled: false  # Disable persistence in dev
+    resources:
+      limits:
+        cpu: 200m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
 
 redis:
   enabled: true
@@ -45,6 +79,13 @@ redis:
   master:
     persistence:
       enabled: false  # Disable persistence in dev
+    resources:
+      limits:
+        cpu: 100m
+        memory: 128Mi
+      requests:
+        cpu: 50m
+        memory: 64Mi
   replica:
     replicaCount: 0  # No replicas in dev
   metrics:
@@ -73,19 +114,27 @@ frontend:
     periodSeconds: 10
     timeoutSeconds: 5
     failureThreshold: 3
+  # Frontend environment variables - updated for separate API domain
   env:
-    # Use Kubernetes DNS for internal communication
-    # Format: http://service-name:port
-    REACT_APP_API_URL: "http://agile-poker:8000/api"
+    # API endpoint - points to API subdomain
+    # For local dev with port-forward: http://localhost:8000
+    # For local dev with ingress: http://api.local or http://localhost:8000
+    REACT_APP_API_URL: "http://localhost:8000"
+    # WebSocket endpoint
+    REACT_APP_WS_URL: "ws://localhost:8000"
     REACT_APP_LOG_LEVEL: "debug"
-    REACT_APP_JIRA_ENABLED: "true"
+    REACT_APP_JIRA_ENABLED: "false"
 
+# Backend environment variables
 env:
   LOG_LEVEL: "DEBUG"
   WORKERS: "1"
   DATABASE_POOL_SIZE: "5"
+  # CORS allows all origins for development
+  # In production, change to specific domains
   CORS_ORIGINS: "*"
   JWT_SECRET: "dev-secret-key-not-secure"
+  SESSION_TIMEOUT_MINUTES: "1440"
   REDIS_ENABLED: "true"
   REDIS_MAX_CONNECTIONS: "10"
 
@@ -96,3 +145,16 @@ secrets:
 
 autoscaling:
   enabled: false  # No autoscaling in dev
+
+# For development: use port-forward instead of ingress
+# kubectl port-forward -n agile-poker svc/agile-poker 8000:8000
+# kubectl port-forward -n agile-poker svc/agile-poker-frontend 3000:3000
+#
+# Or with ingress (requires /etc/hosts or DNS setup):
+# 127.0.0.1 api.local
+# 127.0.0.1 app.local
+#
+# Then access:
+# - Frontend: http://app.local:80 or http://localhost:3000
+# - API: http://api.local:80 or http://localhost:8000
+# - API docs: http://api.local:80/docs or http://localhost:8000/docs

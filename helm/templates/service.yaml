@@ -4,6 +4,7 @@ metadata:
   name: {{ include "agile-poker.fullname" . }}
   labels:
     {{- include "agile-poker.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
   {{- with .Values.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -17,3 +18,4 @@ spec:
       name: http
   selector:
     {{- include "agile-poker.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api

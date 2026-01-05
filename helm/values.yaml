@@ -1,6 +1,6 @@
 # Default values for agile-poker Helm chart
 # This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
+# Declare variables to be passed into templates.
 
 namespace: default
 
@@ -56,36 +56,51 @@ frontend:
     failureThreshold: 3
   # Runtime configuration for frontend
   # These are injected at container startup via environment variables
-  # and made available to the React app via window.__RUNTIME_CONFIG__
   env:
-    # API endpoint - must be accessible from the browser
-    # Use the full URL including protocol and path prefix
+    # API endpoint - should point to the API subdomain
+    # Configure in values override or use --set flag
+    # Example: https://api.example.com
     REACT_APP_API_URL: "http://localhost:8000"
     # WebSocket endpoint for real-time updates
-    # Use wss:// for production with SSL
+    # Example: wss://api.example.com
     REACT_APP_WS_URL: "ws://localhost:8000"
     # Enable/disable Jira integration
     REACT_APP_JIRA_ENABLED: "false"
     # Logging level: debug, info, warn, error
     REACT_APP_LOG_LEVEL: "info"
 
-# Ingress configuration (serves both backend and frontend)
+# Ingress configuration
+# Uses separate Ingress resources for API and Frontend
+# to avoid path-based routing conflicts
 ingress:
   enabled: true
   className: "nginx"
-  annotations:
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-  hosts:
-    - host: agile-poker.local
-      paths:
-        - path: /api
-          pathType: Prefix
-        - path: /
-          pathType: Prefix
-  tls:
-    - secretName: agile-poker-tls
-      hosts:
-        - agile-poker.local
+  
+  # API Ingress configuration
+  # Configure the API hostname here
+  # Example: api.example.com
+  api:
+    enabled: true
+    host: "api.example.com"  # CHANGE THIS to your API domain
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls:
+      enabled: true
+      secretName: api-tls-cert
+  
+  # Frontend Ingress configuration
+  # Configure the main application hostname here
+  # Example: app.example.com or example.com
+  frontend:
+    enabled: true
+    host: "app.example.com"  # CHANGE THIS to your main domain
+    annotations:
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    tls:
+      enabled: true
+      secretName: frontend-tls-cert
 
 # PostgreSQL configuration
 postgresql:
@@ -125,7 +140,10 @@ env:
   LOG_LEVEL: "DEBUG"
   WORKERS: "4"
   DATABASE_POOL_SIZE: "10"
-  CORS_ORIGINS: "*"
+  # CORS origins - Configure with your actual domains
+  # Should include both API and Frontend hostnames
+  # Example: https://app.example.com,https://api.example.com
+  CORS_ORIGINS: "http://localhost:3000,http://localhost:8000"
   JWT_SECRET: "your-secret-key-change-in-production"  # MUST be changed in production!
   JWT_ALGORITHM: "HS256"
   JWT_EXPIRATION_HOURS: "24"
