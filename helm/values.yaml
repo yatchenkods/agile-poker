@@ -85,6 +85,11 @@ ingress:
     annotations:
       cert-manager.io/cluster-issuer: "letsencrypt-prod"
       nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # WebSocket timeout configuration
+    # These values are used in nginx.ingress.kubernetes.io annotations
+    websocket:
+      readTimeout: "3600"    # 1 hour - prevent timeout during long-lived connections
+      sendTimeout: "3600"    # 1 hour - prevent timeout during long-lived connections
     tls:
       enabled: true
       secretName: api-tls-cert
