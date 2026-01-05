@@ -37,6 +37,8 @@ function SessionDetail() {
   const [error, setError] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
+  const [consensusNotification, setConsensusNotification] = useState(null);
+  const [ws, setWs] = useState(null);
 
   // Edit dialog state
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -71,6 +73,13 @@ function SessionDetail() {
     loadSessionData();
     // Setup WebSocket connection
     setupWebSocket();
+
+    // Cleanup WebSocket on component unmount
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
   }, [sessionId]);
 
   useEffect(() => {
@@ -102,21 +111,47 @@ function SessionDetail() {
     const token = localStorage.getItem('token');
     const wsUrl = `${process.env.REACT_APP_WS_URL || 'ws://localhost:8000'}/ws/session/${sessionId}?token=${token}`;
     
-    const ws = new WebSocket(wsUrl);
+    const wsConnection = new WebSocket(wsUrl);
     
-    ws.onmessage = (event) => {
+    wsConnection.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      
       if (data.type === 'estimate_update') {
         // Update estimates in real-time
         console.log('Estimate updated:', data.data);
         // Reload issues to get updated estimates
         loadSessionData();
+      } else if (data.type === 'consensus_reached') {
+        // Consensus reached - show notification and auto-refresh
+        console.log('Consensus reached for issue:', data.issue_id, 'Final estimate:', data.final_estimate);
+        
+        // Show notification about consensus
+        setConsensusNotification({
+          issueId: data.issue_id,
+          issueKey: data.issue_key,
+          finalEstimate: data.final_estimate,
+          isJoker: data.is_joker,
+        });
+        
+        // Auto-refresh data to show the final estimate
+        loadSessionData();
+        
+        // Auto-hide notification after 5 seconds
+        setTimeout(() => {
+          setConsensusNotification(null);
+        }, 5000);
       }
     };
     
-    ws.onerror = (error) => {
+    wsConnection.onerror = (error) => {
       console.error('WebSocket error:', error);
     };
+    
+    wsConnection.onclose = () => {
+      console.log('WebSocket connection closed');
+    };
+
+    setWs(wsConnection);
   };
 
   // Edit session handlers
@@ -324,6 +359,17 @@ function SessionDetail() {
 
   return (
     <Box>
+      {/* Consensus Notification */}
+      {consensusNotification && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setConsensusNotification(null)}>
+          ✨ <strong>Консенсус достигнут!</strong> Задача {consensusNotification.issueKey} оценена в{' '}
+          <strong>
+            {consensusNotification.isJoker ? 'Abstain (J)' : `${consensusNotification.finalEstimate} story points`}
+          </strong>
+          . Страница обновлена автоматически.
+        </Alert>
+      )}
+
       {session && (
         <>
           <Box sx={{ mb: 4 }}>
