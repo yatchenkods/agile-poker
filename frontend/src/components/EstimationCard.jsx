@@ -165,7 +165,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
     let inCodeBlock = false;
     let codeBlockLanguage = '';
     let codeBlockLines = [];
-    let codeBlockStartIdx = null;
 
     const flushCodeBlock = (idx) => {
       if (codeBlockLines.length > 0) {
@@ -219,7 +218,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
       }
       codeBlockLines = [];
       codeBlockLanguage = '';
-      codeBlockStartIdx = null;
     };
 
     lines.forEach((line, lineIdx) => {
@@ -235,7 +233,6 @@ function EstimationCard({ issue, session, onEstimateSubmitted }) {
           // Start of code block
           inCodeBlock = true;
           codeBlockLanguage = codeBlockMatch[1] || '';
-          codeBlockStartIdx = lineIdx;
         }
         return; // Skip the ``` line itself
       }

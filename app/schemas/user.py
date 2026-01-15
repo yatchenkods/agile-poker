@@ -37,14 +37,3 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class UserStats(BaseModel):
-    """User statistics"""
-
-    user_id: int
-    email: str
-    full_name: str
-    total_estimates: int
-    avg_estimation_accuracy: float
-    participated_sessions: int

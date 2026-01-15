@@ -11,6 +11,7 @@ from app.services.session_service import SessionService
 from app.services.jira_service import JiraService
 from app.services.issue_service import IssueService
 from app.utils.security import get_current_user
+from app.routes.jira import FailedIssue
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -31,13 +32,6 @@ class ImportIssuesRequest(BaseModel):
                 "issue_keys": ["DEVOPS-123", "DEVOPS-456"]
             }
         }
-
-
-class FailedIssue(BaseModel):
-    """Failed import issue info"""
-    key: str
-    reason: str
-    details: str = ""
 
 
 class ImportIssuesResponse(BaseModel):
