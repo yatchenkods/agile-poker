@@ -7,20 +7,11 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.schemas.user import UserResponse, UserUpdate
 from app.services.user_service import UserService
+from app.utils.auth import verify_admin
 from app.utils.security import get_current_user
 
 router = APIRouter()
 user_service = UserService()
-
-
-def verify_admin(current_user = Depends(get_current_user)):
-    """Verify user is admin"""
-    if not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only admins can access this endpoint",
-        )
-    return current_user
 
 
 @router.get("/", response_model=List[UserResponse])

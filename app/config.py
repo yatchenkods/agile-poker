@@ -1,7 +1,6 @@
 """Application configuration management"""
 
 from functools import lru_cache
-from typing import Optional
 
 from pydantic_settings import BaseSettings
 
@@ -15,7 +14,6 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
     debug: bool = False
-    environment: str = "development"
 
     # Database
     database_url: str = "postgresql://poker:poker@localhost:5432/agile_poker"
@@ -31,19 +29,9 @@ class Settings(BaseSettings):
     jira_url: str = "https://jira.example.com"
     jira_username: str = ""
     jira_api_token: str = ""
-    jira_project_key: Optional[str] = None
 
     # Redis
-    redis_enabled: bool = True
     redis_url: str = "redis://localhost:6379/0"
-
-    # Email
-    email_enabled: bool = False
-    email_from: str = "noreply@example.com"
-    smtp_server: str = "smtp.gmail.com"
-    smtp_port: int = 587
-    smtp_username: str = ""
-    smtp_password: str = ""
 
     # Logging
     log_level: str = "INFO"

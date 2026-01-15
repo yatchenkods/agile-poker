@@ -39,7 +39,6 @@ import PeopleIcon from '@mui/icons-material/People';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import LockIcon from '@mui/icons-material/Lock';
 import SecurityIcon from '@mui/icons-material/Security';
-import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { api } from '../services/api';
 
 function Admin() {
