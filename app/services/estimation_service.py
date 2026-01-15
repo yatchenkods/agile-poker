@@ -11,14 +11,18 @@ class EstimationService:
     """Estimation business logic"""
 
     @staticmethod
-    def create_estimate(db: Session, estimate_data: EstimateCreate) -> Estimate:
-        """Create an estimate"""
+    def create_estimate(db: Session, estimate_data: EstimateCreate) -> tuple[Estimate, dict | None]:
+        """Create an estimate
+
+        Returns:
+            tuple: (estimate, consensus_data) where consensus_data is dict if consensus reached, None otherwise
+        """
         # Check if user already estimated this issue
         existing = db.query(Estimate).filter(
             Estimate.issue_id == estimate_data.issue_id,
             Estimate.user_id == estimate_data.user_id,
         ).first()
-        
+
         if existing:
             # Update existing estimate
             existing.story_points = estimate_data.story_points
@@ -29,16 +33,16 @@ class EstimationService:
             estimate_dict = estimate_data.dict(exclude={'session_id'})
             db_estimate = Estimate(**estimate_dict)
             db.add(db_estimate)
-        
+
         db.commit()
-        
+
         # Get the final estimate object (existing or newly created)
         final_estimate = existing if existing else db_estimate
-        
+
         # Check if we should auto-apply the estimate
-        EstimationService._check_consensus(db, estimate_data.issue_id)
-        
-        return final_estimate
+        consensus_data = EstimationService._check_consensus(db, estimate_data.issue_id)
+
+        return final_estimate, consensus_data
 
     @staticmethod
     def get_estimates(
@@ -131,59 +135,69 @@ class EstimationService:
         return query.order_by(Estimate.created_at.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
-    def _check_consensus(db: Session, issue_id: int) -> bool:
-        """Check if estimates have reached consensus and auto-apply"""
+    def _check_consensus(db: Session, issue_id: int) -> dict | None:
+        """Check if estimates have reached consensus and auto-apply
+
+        Returns:
+            dict with consensus data if reached, None otherwise
+            dict keys: issue_id, issue_key, session_id, final_score
+        """
         issue = db.query(Issue).filter(Issue.id == issue_id).first()
         if not issue or issue.is_estimated:
-            return False
-        
+            return None
+
         # Get session estimators count
         from app.models.session import Session as SessionModel
         session = db.query(SessionModel).filter(SessionModel.id == issue.session_id).first()
         if not session:
-            return False
-        
+            return None
+
         # Get estimators count (people assigned to estimate tasks)
         # If no estimators assigned, use all participants as fallback
         if session.estimators and len(session.estimators) > 0:
             estimators_count = len(session.estimators)
         else:
             estimators_count = len(session.participants) if session.participants else 0
-        
+
         if estimators_count == 0:
-            return False
-        
+            return None
+
         # Get all estimates (both regular and joker)
         estimates = db.query(Estimate).filter(Estimate.issue_id == issue_id).all()
         estimate_count = len(estimates)
-        
+
         # Check if all estimators have voted (including joker votes)
         if estimate_count < estimators_count:
-            return False
-        
+            return None
+
         # Only consider non-joker estimates for consensus calculation
         valid_estimates = [e for e in estimates if not e.is_joker]
-        
+
         # If no valid estimates (only jokers), cannot reach consensus
         if not valid_estimates:
-            return False
-        
+            return None
+
         points = [e.story_points for e in valid_estimates]
         variance = max(points) - min(points)
-        
+
         # Check if consensus: max - min <= 2 points AND all estimators have voted
         if variance <= 2 and estimate_count >= estimators_count:
             # Calculate average and round to nearest valid score
             avg = sum(points) / len(points)
             valid_scores = [1, 2, 4, 8, 16]
             final_score = min(valid_scores, key=lambda x: abs(x - avg))
-            
+
             # Apply estimate
             issue.story_points = final_score
             issue.is_estimated = True
             db.add(issue)
             db.commit()
-            
-            return True
-        
-        return False
+
+            return {
+                "issue_id": issue.id,
+                "issue_key": issue.jira_key,
+                "session_id": issue.session_id,
+                "final_score": final_score,
+            }
+
+        return None
