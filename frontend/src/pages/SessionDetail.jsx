@@ -38,6 +38,7 @@ function SessionDetail() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isCreator, setIsCreator] = useState(false);
   const [consensusNotification, setConsensusNotification] = useState(null);
+  const [issueAddedNotification, setIssueAddedNotification] = useState(null);
   const [ws, setWs] = useState(null);
 
   // Edit dialog state
@@ -124,7 +125,7 @@ function SessionDetail() {
       } else if (data.type === 'consensus_reached') {
         // Consensus reached - show notification and auto-refresh
         console.log('Consensus reached for issue:', data.issue_id, 'Final estimate:', data.final_estimate);
-        
+
         // Show notification about consensus
         setConsensusNotification({
           issueId: data.issue_id,
@@ -132,13 +133,31 @@ function SessionDetail() {
           finalEstimate: data.final_estimate,
           isJoker: data.is_joker,
         });
-        
+
         // Auto-refresh data to show the final estimate
         loadSessionData();
-        
+
         // Auto-hide notification after 5 seconds
         setTimeout(() => {
           setConsensusNotification(null);
+        }, 5000);
+      } else if (data.type === 'issue_added') {
+        // New issue added - show notification and auto-refresh
+        console.log('Issue added:', data.issue_key, data.issue_title);
+
+        // Show notification about new issue
+        setIssueAddedNotification({
+          issueId: data.issue_id,
+          issueKey: data.issue_key,
+          issueTitle: data.issue_title,
+        });
+
+        // Auto-refresh data to show the new issue
+        loadSessionData();
+
+        // Auto-hide notification after 5 seconds
+        setTimeout(() => {
+          setIssueAddedNotification(null);
         }, 5000);
       }
     };
@@ -367,6 +386,12 @@ function SessionDetail() {
             {consensusNotification.isJoker ? 'Abstain (J)' : `${consensusNotification.finalEstimate} story points`}
           </strong>
           . Страница обновлена автоматически.
+        </Alert>
+      )}
+
+      {issueAddedNotification && (
+        <Alert severity="info" sx={{ mb: 2 }} onClose={() => setIssueAddedNotification(null)}>
+          ➕ <strong>Новая задача!</strong> {issueAddedNotification.issueKey}: {issueAddedNotification.issueTitle}
         </Alert>
       )}
 

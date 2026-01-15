@@ -8,6 +8,7 @@ from app.database import get_db
 from app.schemas.estimate import EstimateCreate, EstimateResponse, EstimateSummary
 from app.services.estimation_service import EstimationService
 from app.utils.security import get_current_user
+from app.websockets.session_ws import manager
 
 router = APIRouter()
 estimation_service = EstimationService()
@@ -20,7 +21,18 @@ async def create_estimate(
     db: Session = Depends(get_db),
 ):
     """Create an estimate for an issue"""
-    estimate = estimation_service.create_estimate(db, estimate_data)
+    estimate, consensus_data = estimation_service.create_estimate(db, estimate_data)
+
+    # Broadcast consensus_reached event if consensus was achieved
+    if consensus_data:
+        await manager.broadcast(consensus_data["session_id"], {
+            "type": "consensus_reached",
+            "issue_id": consensus_data["issue_id"],
+            "issue_key": consensus_data["issue_key"],
+            "final_estimate": consensus_data["final_score"],
+            "is_joker": False,
+        })
+
     return estimate
 
 

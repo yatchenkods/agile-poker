@@ -12,6 +12,7 @@ from app.services.jira_service import JiraService
 from app.services.issue_service import IssueService
 from app.utils.security import get_current_user
 from app.routes.jira import FailedIssue
+from app.websockets.session_ws import manager
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -260,9 +261,10 @@ async def import_issues_to_session(
         
         # Add successful issues to session
         from app.models.issue import Issue
-        
+
         imported_count = 0
         processed_keys = set()
+        imported_issues_data = []  # Track newly imported issues for WebSocket broadcast
         
         for jira_issue in successful_issues:
             try:
@@ -316,6 +318,12 @@ async def import_issues_to_session(
                 db.add(new_issue)
                 db.flush()
                 imported_count += 1
+                # Track for WebSocket broadcast
+                imported_issues_data.append({
+                    "issue_id": new_issue.id,
+                    "issue_key": issue_key,
+                    "issue_title": title,
+                })
                 logger.info(f"Added issue {issue_key} (ID: {new_issue.id}) to session {session_id}")
                 
             except Exception as e:
@@ -335,7 +343,16 @@ async def import_issues_to_session(
             f"Successfully imported {imported_count} issue(s) to session {session_id}, "
             f"{len(failed_issues)} failed"
         )
-        
+
+        # Broadcast issue_added events for newly imported issues
+        for issue_data in imported_issues_data:
+            await manager.broadcast(session_id, {
+                "type": "issue_added",
+                "issue_id": issue_data["issue_id"],
+                "issue_key": issue_data["issue_key"],
+                "issue_title": issue_data["issue_title"],
+            })
+
         # Build failed issues response
         failed_issues_response = [
             FailedIssue(
